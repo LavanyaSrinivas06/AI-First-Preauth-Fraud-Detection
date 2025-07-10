@@ -1,0 +1,39 @@
+# 🔁 Virtual Environment
+venv/
+.env
+*.env
+
+# 🐍 Python Artifacts
+__pycache__/
+*.py[cod]
+*.pkl
+*.joblib
+*.log
+
+# 📊 Data Files
+*.csv
+*.json
+*.xlsx
+*.parquet
+
+# 📓 Jupyter
+.ipynb_checkpoints/
+
+# 🧪 Testing
+.coverage
+.tox/
+pytest_cache/
+htmlcov/
+
+# 💻 IDE & Editor
+.vscode/
+.idea/
+
+# 🍎 OS Files
+.DS_Store
+Thumbs.db
+
+# 🔍 Model Output
+models/
+data/processed/
+tickets/
