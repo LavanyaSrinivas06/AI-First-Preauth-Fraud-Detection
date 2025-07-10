@@ -1,0 +1,15 @@
+data:
+  raw_path: "data/raw/fraud_dataset.csv"
+  processed_path: "data/processed/cleaned_data.csv"
+
+model:
+  type: "xgboost"
+  save_path: "models/fraud_model.pkl"
+  supervised: true
+  params:
+    max_depth: 5
+    n_estimators: 100
+    learning_rate: 0.1
+
+threshold:
+  anomaly_score: 0.75
