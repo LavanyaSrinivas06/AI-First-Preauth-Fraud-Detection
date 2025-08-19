@@ -35,4 +35,4 @@ Thumbs.db
 
 # 🔍 Model Output
 models/
-tickets/
+tickets/data/raw/creditcard.csv
