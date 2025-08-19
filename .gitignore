@@ -35,4 +35,9 @@ Thumbs.db
 
 # 🔍 Model Output
 models/
-tickets/
+tickets/data/raw/creditcard.csv
+data/raw/creditcard.csv
+
+data/raw/creditcard.csv
+data/raw/creditcard.csv
+data/raw/ecom_synthetic_fraud_dataset_v1.csv
