@@ -92,15 +92,15 @@ Phase 1: Data Exploration
 ✔ Checked class imbalance (~0.2% fraud)
 ✔ Analyzed transaction amount and time patterns
 ✔ Correlation heatmap generated
-✔ PCA v<img width="745" height="768" alt="fraud_detection_pipeline_vertical" src="https://github.com/user-attachments/assets/9be67c16-87ad-4414-9410-f0d9bd06884f" />
-s t-SNE visualization done
+✔ PCA vs t-SNE visualization done
 
 
 
 
+<img width="745" height="768" alt="fraud_detection_pipeline_vertical" src="https://github.com/user-attachments/assets/9ec16e47-278a-4a12-9038-b89ead408aec" />
 
 
-![Uploading fraud_detection_pipeline_vertical.png…]()
+
 
 
 
