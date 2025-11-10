@@ -2,31 +2,39 @@ name: Run CI checks
 
 on:
   push:
-    branches: [ main, feature/** ]
+    branches:
+      - main
+      - feature/**
+      - FPN-**        # so your ticket branches run CI on push
   pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
 
       - name: Install dependencies
         run: |
+          # your requirements should now skip Windows-only packages on Linux
           pip install -r requirements.txt
           pip install pytest black flake8
 
       - name: Lint with flake8
-        run: flake8 app tests
+        run: flake8 api src dashboard tests
 
       - name: Format check with Black
-        run: black --check app tests
+        run: black --check api src dashboard tests
 
       - name: Run tests
         run: pytest -v
-
