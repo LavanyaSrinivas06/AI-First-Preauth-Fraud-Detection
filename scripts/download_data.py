@@ -8,9 +8,9 @@ def main():
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
     if DATA_FILE.exists():
-        size_mb = DATA_FILE.stat().st_size / (1024 * 1024)
-        print(f"Found {DATA_FILE} (~{size_mb:.1f} MB)")
-        if size_mb < 140:
+        MIN_EXPECTED_FILE_SIZE_MB = DATA_FILE.stat().st_size / (1024 * 1024)
+        print(f"Found {DATA_FILE} (~{MIN_EXPECTED_FILE_SIZE_MB:.1f} MB)")
+        if MIN_EXPECTED_FILE_SIZE_MB < 140:
             print("⚠️ File seems too small (<140 MB). Re-download to avoid corrupt CSV.")
         else:
             print("✅ Dataset looks OK.")
