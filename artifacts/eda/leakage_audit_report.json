@@ -3,7 +3,7 @@
   "cols": 51,
   "fraud_count": 492,
   "legit_count": 284315,
-  "fraud_ratio": 0.1727,
+  "fraud_ratio": 0.001727,
   "missing_values_total": 0,
   "duplicate_rows": 0,
   "time_order_violations_per_device": 0,
@@ -21,8 +21,8 @@
   },
   "first_txn_counts_eq_1_rate": {
     "txn_count_5m": 0.8985,
-    "txn_count_30m": 0.8985,
-    "txn_count_60m": 0.8985
+    "txn_count_30m": 0.8752,
+    "txn_count_60m": 0.8621
   },
   "notes": [
     "All features should be pre-authorization only.",
