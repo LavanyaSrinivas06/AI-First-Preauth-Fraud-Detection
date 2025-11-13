@@ -1,0 +1,32 @@
+{
+  "rows": 284807,
+  "cols": 51,
+  "fraud_count": 492,
+  "legit_count": 284315,
+  "fraud_ratio": 0.001727,
+  "missing_values_total": 0,
+  "duplicate_rows": 0,
+  "time_order_violations_per_device": 0,
+  "top_corr_with_Class_abs": {
+    "V17": 0.3265,
+    "V14": 0.3025,
+    "V12": 0.2606,
+    "V10": 0.2169,
+    "V16": 0.1965,
+    "V3": 0.193,
+    "V7": 0.1873,
+    "V11": 0.1549,
+    "V4": 0.1334,
+    "V18": 0.1115
+  },
+  "first_txn_counts_eq_1_rate": {
+    "txn_count_5m": 0.8985,
+    "txn_count_30m": 0.8752,
+    "txn_count_60m": 0.8621
+  },
+  "notes": [
+    "All features should be pre-authorization only.",
+    "Monitor correlations again after train/validation/test split.",
+    "Time-order violations > 0 may indicate data ordering issues."
+  ]
+}
