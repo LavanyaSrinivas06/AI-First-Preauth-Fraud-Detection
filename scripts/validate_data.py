@@ -119,6 +119,9 @@ def check_dtypes(df: pd.DataFrame, schema: list[dict], results: list[str]) -> bo
             continue
 
         actual = str(df[col].dtype)
+        # Allow float64 for int64 columns if they might contain NaN
+        if expected_dtype == "int64" and actual in ["float64", "int64"]:
+            continue
         if actual != expected_dtype:
             results.append(
                 f"❌ Column '{col}' has dtype {actual}, expected {expected_dtype}"
@@ -166,9 +169,12 @@ def check_value_ranges(df: pd.DataFrame, results: list[str]) -> bool:
     """
     ok = True
 
-    def col_ok(condition: pd.Series, description: str) -> bool:
+    def col_ok(series: pd.Series, description: str) -> bool:
         nonlocal ok
-        if not condition.all():
+    # Remove NaNs (handled separately in missingness checks)
+        non_null = series.dropna()
+
+        if not non_null.empty and not non_null.all():
             results.append(f"❌ Range check failed: {description}")
             ok = False
             return False
@@ -239,7 +245,7 @@ def write_validation_report(
     lines.append("# Data Validation Report")
     lines.append("")
     lines.append(f"- Generated at: {datetime.utcnow().isoformat()}Z")
-    lines.append(f"- Source file: `{ENRICHED_PATH}`")
+    lines.append(f"- Source file: `{ENRICHED_PATH.relative_to(ROOT_DIR)}`")
     lines.append(f"- Shape: {df.shape[0]} rows × {df.shape[1]} columns")
     lines.append("")
     lines.append("## Validation Checks")
