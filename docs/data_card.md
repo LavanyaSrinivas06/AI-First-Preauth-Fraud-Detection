@@ -54,8 +54,10 @@ Mitigation:
 ## 4. Dataset Composition
 
 ### **4.1 Columns Included**
-**PCA Components (30):**  
-Time, V1–V28, Amount
+**Original Features (3):**  
+Time, Amount, Class
+**PCA Components (28):**  
+V1–V28
 
 **Fraud Label:**  
 Class ∈ {0, 1}
