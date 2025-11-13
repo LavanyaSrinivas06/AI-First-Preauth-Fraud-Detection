@@ -1,7 +1,8 @@
-# 🔁 Virtual Environment
+# Virtual environment
+.venv/
 venv/
-.env
-*.env
+*/.venv/
+*/venv/
 
 # 🐍 Python Artifacts
 __pycache__/
