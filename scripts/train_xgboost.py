@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+# Add project root to PYTHONPATH
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT))
+
 """
 Train XGBoost model with hyperparameter tuning and threshold optimization.
 Saves:
@@ -6,7 +13,6 @@ Saves:
 - artifacts/xgb_metrics.json
 - artifacts/plots/xgb_feature_importance.png
 """
-
 import json
 from pathlib import Path
 import joblib
@@ -15,6 +21,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from xgboost import XGBClassifier, plot_importance
+from src.utils.data_loader import load_dataset
+
+
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -45,21 +54,20 @@ TEST_PATH = DATA_DIR / "test.csv"
 # ---------------------------
 print("📥 Loading processed datasets...")
 
-train_df = pd.read_csv(TRAIN_PATH)
-val_df = pd.read_csv(VAL_PATH)
-test_df = pd.read_csv(TEST_PATH)
+# Optional safety: check files exist
+for path, name in [(TRAIN_PATH, "Training"), (VAL_PATH, "Validation"), (TEST_PATH, "Test")]:
+    if not path.exists():
+        raise FileNotFoundError(f"{name} data not found at {path}. "
+                                f"Please run the preprocessing script first.")
 
-X_train = train_df.drop(columns=["Class"])
-y_train = train_df["Class"]
-
-X_val = val_df.drop(columns=["Class"])
-y_val = val_df["Class"]
-
-X_test = test_df.drop(columns=["Class"])
-y_test = test_df["Class"]
+# Use shared loader from src.utils.data_loader
+train_df, X_train, y_train = load_dataset(TRAIN_PATH)
+val_df, X_val, y_val = load_dataset(VAL_PATH)
+test_df, X_test, y_test = load_dataset(TEST_PATH)
 
 print("✔ Data loaded.")
 print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+
 
 # ---------------------------
 # Baseline Model
@@ -68,17 +76,19 @@ print("\n🚀 Training baseline XGBoost model...")
 
 scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
 
-baseline_xgb = XGBClassifier(
-    n_estimators=300,
-    learning_rate=0.05,
-    max_depth=6,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    random_state=42,
-    scale_pos_weight=scale_pos_weight,
-    n_jobs=-1,
-    tree_method="hist"
-)
+XGB_CONFIG = {
+    "n_estimators": 300,
+    "learning_rate": 0.05,
+    "max_depth": 6,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "random_state": 42,
+    "scale_pos_weight": scale_pos_weight,
+    "n_jobs": -1,
+    "tree_method": "hist"
+}
+
+baseline_xgb = XGBClassifier(**XGB_CONFIG)
 
 baseline_xgb.fit(X_train, y_train)
 print("✔ Baseline model trained.")
@@ -89,9 +99,9 @@ print("✔ Baseline model trained.")
 print("\n🎯 Starting hyperparameter search...")
 
 param_grid = {
-    "max_depth": [3, 4, 5],
+    "max_depth": [3, 4, 5,6],
     "learning_rate": [0.01, 0.03, 0.05],
-    "n_estimators": [150, 200, 250],
+    "n_estimators": [150, 200, 250, 300],  # include baseline 300
     "subsample": [0.8, 0.9, 1.0],
     "colsample_bytree": [0.7, 0.8, 1.0],
 }
@@ -104,7 +114,7 @@ tuner = RandomizedSearchCV(
         tree_method="hist",
     ),
     param_distributions=param_grid,
-    n_iter=10,
+    n_iter=30,
     scoring="f1",
     cv=3,
     verbose=1,
@@ -126,7 +136,7 @@ print("\n📌 Optimizing probability threshold...")
 
 val_probs = best_xgb.predict_proba(X_val)[:, 1]
 
-thresholds = np.linspace(0.1, 0.9, 50)
+thresholds = np.linspace(0.1, 0.9, 90)
 best_f1 = 0
 best_t = 0.5
 
@@ -144,7 +154,18 @@ print(f"✔ Best F1: {best_f1:.4f}")
 # Final Evaluation Function
 # ---------------------------
 def evaluate(model, X, y, t):
-    probs = model.predict_proba(X)[:, 1]
+    """
+    Compute evaluation metrics for a given model, dataset, and threshold.
+    """
+    try:
+        probs = model.predict_proba(X)[:, 1]
+    except Exception as e:
+        raise RuntimeError(
+            "Error during evaluation: model.predict_proba(X) failed. "
+            "Check that X has the expected shape and that the model is fitted. "
+            f"Original error: {e}"
+        )
+
     preds = (probs >= t).astype(int)
 
     return {
