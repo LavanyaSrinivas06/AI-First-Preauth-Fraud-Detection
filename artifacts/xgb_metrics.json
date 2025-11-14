@@ -1,0 +1,96 @@
+{
+    "threshold": 0.7921348314606742,
+    "validation": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.8888888888888888,
+        "roc_auc": 0.9948247078464106,
+        "confusion_matrix": [
+            [
+                2995,
+                0
+            ],
+            [
+                1,
+                4
+            ]
+        ],
+        "classification_report": {
+            "0": {
+                "precision": 0.9996662216288384,
+                "recall": 1.0,
+                "f1-score": 0.99983308295777,
+                "support": 2995.0
+            },
+            "1": {
+                "precision": 1.0,
+                "recall": 0.8,
+                "f1-score": 0.8888888888888888,
+                "support": 5.0
+            },
+            "accuracy": 0.9996666666666667,
+            "macro avg": {
+                "precision": 0.9998331108144192,
+                "recall": 0.9,
+                "f1-score": 0.9443609859233294,
+                "support": 3000.0
+            },
+            "weighted avg": {
+                "precision": 0.9996667779261237,
+                "recall": 0.9996666666666667,
+                "f1-score": 0.9996481759676552,
+                "support": 3000.0
+            }
+        }
+    },
+    "test": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "roc_auc": 1.0,
+        "confusion_matrix": [
+            [
+                2998,
+                0
+            ],
+            [
+                0,
+                2
+            ]
+        ],
+        "classification_report": {
+            "0": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 2998.0
+            },
+            "1": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 2.0
+            },
+            "accuracy": 1.0,
+            "macro avg": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 3000.0
+            },
+            "weighted avg": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 3000.0
+            }
+        }
+    },
+    "best_params": {
+        "subsample": 0.9,
+        "n_estimators": 200,
+        "max_depth": 3,
+        "learning_rate": 0.03,
+        "colsample_bytree": 1.0
+    }
+}
