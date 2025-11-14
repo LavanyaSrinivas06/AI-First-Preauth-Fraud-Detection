@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+
+import sys
+from pathlib import Path
+
+# Add project root to PYTHONPATH
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT))
+
 """
 Quick sanity test for the trained XGBoost model.
 
@@ -13,6 +21,8 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+from src.utils.data_loader import load_dataset
+
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -40,26 +50,45 @@ METRICS_PATH = ARTIFACT_DIR / "xgb_metrics.json"
 # Loading helpers
 # -------------------------------------------------------------------
 def load_data():
-    val_df = pd.read_csv(VAL_PATH)
-    test_df = pd.read_csv(TEST_PATH)
-
-    X_val = val_df.drop(columns=["Class"])
-    y_val = val_df["Class"]
-
-    X_test = test_df.drop(columns=["Class"])
-    y_test = test_df["Class"]
-
+    """
+    Load validation and test CSVs and split into:
+    - full DataFrames (val_df, test_df)
+    - features (X_val, X_test)
+    - labels (y_val, y_test)
+    """
+    val_df, X_val, y_val = load_dataset(VAL_PATH)
+    test_df, X_test, y_test = load_dataset(TEST_PATH)
     return val_df, X_val, y_val, test_df, X_test, y_test
 
 
-def load_model_and_threshold():
-    model = joblib.load(MODEL_PATH)
 
-    with open(METRICS_PATH, "r") as f:
-        metrics = json.load(f)
+def load_model_and_threshold():
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Model file not found at {MODEL_PATH}. "
+            f"Please run `train_xgboost.py` before loading the model."
+        )
+
+    if not METRICS_PATH.exists():
+        raise FileNotFoundError(
+            f"Metrics file not found at {METRICS_PATH}. "
+            f"Please ensure training completed successfully."
+        )
+
+    try:
+        model = joblib.load(MODEL_PATH)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load model at {MODEL_PATH}: {e}")
+
+    try:
+        with open(METRICS_PATH, "r") as f:
+            metrics = json.load(f)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load metrics JSON at {METRICS_PATH}: {e}")
 
     threshold = float(metrics.get("threshold", 0.5))
     return model, threshold
+
 
 
 # -------------------------------------------------------------------
@@ -92,6 +121,22 @@ def evaluate_split(model, X, y, threshold: float, split_name: str):
 # Show example transactions (TP / FN / FP)
 # -------------------------------------------------------------------
 def show_examples(df, y_true, proba, preds, split_name: str, k: int = 5):
+    """
+    Print example transactions for manual inspection grouped by prediction outcome.
+
+    Shows:
+      - True positives: fraud correctly detected
+      - False negatives: fraud missed
+      - False positives: non-fraud flagged as fraud
+
+    Args:
+        df: Original DataFrame with all features.
+        y_true: True labels (Series or array-like, 0/1).
+        proba: Predicted fraud probabilities from the model.
+        preds: Binary predicted labels (0/1) after thresholding.
+        split_name: Name of the split ("validation" or "test").
+        k: Max number of examples to show from each group.
+    """
     df_local = df.copy()
     df_local["y_true"] = y_true.values
     df_local["y_pred"] = preds
