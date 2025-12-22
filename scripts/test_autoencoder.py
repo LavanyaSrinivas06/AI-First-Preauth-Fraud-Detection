@@ -26,9 +26,9 @@ ARTIFACT_DIR = ROOT / "artifacts"
 MODEL_PATH = ARTIFACT_DIR / "autoencoder_model.h5"
 THRESHOLD_PATH = ARTIFACT_DIR / "ae_threshold.txt"
 
-TRAIN_PATH = DATA_DIR / "train.csv"
-VAL_PATH = DATA_DIR / "val.csv"
-TEST_PATH = DATA_DIR / "test.csv"
+TRAIN_PATH = DATA_DIR / "train_nosmote.csv"
+VAL_PATH  = DATA_DIR / "val_nosmote.csv"
+TEST_PATH = DATA_DIR / "test_nosmote.csv"
 
 
 # ------------------------------------------------------
@@ -57,6 +57,7 @@ def load_all():
 
 
 
+
     with open(THRESHOLD_PATH, "r") as f:
         threshold = float(f.read().strip())
 
@@ -81,7 +82,8 @@ def evaluate_split(name, model, threshold, X, y):
     print(f"\n===== {name.upper()} EVALUATION =====")
 
     errors = reconstruction_errors(model, X)
-    preds = (errors > threshold).astype(int)
+    preds = (errors >= threshold).astype(int)
+
 
     precision = precision_score(y, preds, zero_division=0)
     recall = recall_score(y, preds, zero_division=0)
