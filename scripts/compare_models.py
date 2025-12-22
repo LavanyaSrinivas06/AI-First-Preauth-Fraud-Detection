@@ -41,8 +41,8 @@ df = pd.read_csv(DATA_PATH)
 X_test = df.drop(columns=["Class"])
 y_test = df["Class"].values
 
-preprocess = joblib.load(PREPROCESS_PATH)
 X_test_processed = X_test.values
+
 
 xgb_model = joblib.load(XGB_MODEL_PATH)
 #autoencoder = load_model(AE_MODEL_PATH)
