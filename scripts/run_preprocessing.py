@@ -40,6 +40,9 @@ REPORT_PATH = DOCS_DIR / "preprocessing_summary.md"
 TARGET_COL = "Class"   # label column
 TIME_COL = "Time"      # column used for time-based splitting
 
+USE_SMOTE = False
+
+
 
 # ==== HELPER FUNCTIONS ========================================================
 
@@ -87,7 +90,7 @@ def identify_feature_columns(df: pd.DataFrame) -> tuple[list[str], list[str]]:
       - TARGET_COL (label)
       - TIME_COL   (used only for ordering, not as a feature)
     """
-    exclude_cols = {TARGET_COL, TIME_COL}
+    exclude_cols = {TARGET_COL, TIME_COL, "device_id"}
     feature_cols = [c for c in df.columns if c not in exclude_cols]
 
     # Categorical: object / category / bool
@@ -172,7 +175,7 @@ def main():
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. Load enriched dataset
-    df = load_enriched_dataset(sample_n=20000)
+    df = load_enriched_dataset(sample_n=None)
 
     # 2. Time-based splits
     train_df_raw, val_df_raw, test_df_raw = make_time_based_splits(df)
@@ -227,10 +230,21 @@ def main():
 
     # 7. Apply SMOTE on TRAIN ONLY (to address class imbalance)
     sm = SMOTE(random_state=42)
+
     X_train_resampled, y_train_resampled = sm.fit_resample(
         train_df_processed_before_smote.drop(columns=[TARGET_COL]),
         train_df_processed_before_smote[TARGET_COL],
     )
+
+    # Build final train dataframe after SMOTE
+    train_df_processed_after_smote = pd.DataFrame(
+        X_train_resampled,
+        columns=feature_names,
+    )
+    train_df_processed_after_smote[TARGET_COL] = y_train_resampled
+
+    
+
 
     # Build final train dataframe after SMOTE
     train_df_processed_after_smote = pd.DataFrame(

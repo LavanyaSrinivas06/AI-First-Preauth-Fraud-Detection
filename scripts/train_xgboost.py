@@ -48,6 +48,8 @@ PLOT_DIR.mkdir(exist_ok=True)
 TRAIN_PATH = DATA_DIR / "train.csv"
 VAL_PATH = DATA_DIR / "val.csv"
 TEST_PATH = DATA_DIR / "test.csv"
+USED_SMOTE = False  # set True only if preprocessing used SMOTE
+
 
 # ---------------------------
 # Load Data
@@ -74,7 +76,8 @@ print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 # ---------------------------
 print("\n🚀 Training baseline XGBoost model...")
 
-scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+#scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+scale_pos_weight = 1.0 if USED_SMOTE else (y_train == 0).sum() / (y_train == 1).sum()
 
 XGB_CONFIG = {
     "n_estimators": 300,
@@ -115,7 +118,7 @@ tuner = RandomizedSearchCV(
     ),
     param_distributions=param_grid,
     n_iter=30,
-    scoring="f1",
+    scoring="average_precision",
     cv=3,
     verbose=1,
     n_jobs=-1,
@@ -136,7 +139,7 @@ print("\n📌 Optimizing probability threshold...")
 
 val_probs = best_xgb.predict_proba(X_val)[:, 1]
 
-thresholds = np.linspace(0.1, 0.9, 90)
+thresholds = np.linspace(0.001, 0.5, 500)
 best_f1 = 0
 best_t = 0.5
 
