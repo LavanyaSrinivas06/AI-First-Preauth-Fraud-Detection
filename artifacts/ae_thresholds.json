@@ -1,0 +1,7 @@
+{
+  "review": 2.8606350898742705,
+  "block": 21.662972305300073,
+  "max_fpr_review": 0.01,
+  "max_fpr_block": 0.001,
+  "note": "Decisions: approve < review < block based on reconstruction error."
+}
