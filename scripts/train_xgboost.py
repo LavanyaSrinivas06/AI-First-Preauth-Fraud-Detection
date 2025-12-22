@@ -25,6 +25,7 @@ from src.utils.data_loader import load_dataset
 
 
 from sklearn.metrics import (
+    fbeta_score,
     precision_score,
     recall_score,
     f1_score,
@@ -45,10 +46,12 @@ PLOT_DIR = ARTIFACT_DIR / "plots"
 ARTIFACT_DIR.mkdir(exist_ok=True)
 PLOT_DIR.mkdir(exist_ok=True)
 
-TRAIN_PATH = DATA_DIR / "train.csv"
-VAL_PATH = DATA_DIR / "val.csv"
-TEST_PATH = DATA_DIR / "test.csv"
-USED_SMOTE = False  # set True only if preprocessing used SMOTE
+# XGBoost should train on SMOTEd data
+TRAIN_PATH = DATA_DIR / "train.csv"          # SMOTEd
+VAL_PATH   = DATA_DIR / "val.csv"            # not smoted
+TEST_PATH  = DATA_DIR / "test.csv"           # not smoted
+USED_SMOTE = True
+
 
 
 # ---------------------------
@@ -140,18 +143,19 @@ print("\n📌 Optimizing probability threshold...")
 val_probs = best_xgb.predict_proba(X_val)[:, 1]
 
 thresholds = np.linspace(0.001, 0.5, 500)
-best_f1 = 0
+best_score = -1.0   # ✅ INITIALIZE
 best_t = 0.5
 
 for t in thresholds:
     preds = (val_probs >= t).astype(int)
-    f1 = f1_score(y_val, preds)
-    if f1 > best_f1:
-        best_f1 = f1
+    score = fbeta_score(y_val, preds, beta=2, zero_division=0)
+    if score > best_score:
+        best_score = score
         best_t = t
 
 print(f"✔ Best Threshold: {best_t:.4f}")
-print(f"✔ Best F1: {best_f1:.4f}")
+print(f"✔ Best F2: {best_score:.4f}")
+
 
 # ---------------------------
 # Final Evaluation Function

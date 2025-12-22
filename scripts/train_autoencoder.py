@@ -52,9 +52,9 @@ PLOT_DIR = ARTIFACT_DIR / "plots"
 ARTIFACT_DIR.mkdir(exist_ok=True)
 PLOT_DIR.mkdir(exist_ok=True)
 
-TRAIN_PATH = DATA_DIR / "train.csv"
-VAL_PATH = DATA_DIR / "val.csv"
-TEST_PATH = DATA_DIR / "test.csv"
+TRAIN_PATH = DATA_DIR / "train_nosmote.csv"
+VAL_PATH   = DATA_DIR / "val_nosmote.csv"
+TEST_PATH  = DATA_DIR / "test_nosmote.csv"
 
 AE_MODEL_PATH = ARTIFACT_DIR / "autoencoder_model.h5"
 AE_THRESHOLD_PATH = ARTIFACT_DIR / "ae_threshold.txt"
@@ -111,7 +111,9 @@ def build_autoencoder(input_dim: int) -> models.Model:
             layers.Dense(input_dim, activation="linear"),
         ]
     )
-    model.compile(optimizer="adam", loss="mse")
+    opt = tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1.0)
+    model.compile(optimizer=opt, loss="mse")
+
     return model
 
 
@@ -190,6 +192,10 @@ def main():
     X_train_legit = X_train[legit_train_mask].values
     X_val_legit = X_val[legit_val_mask].values
 
+    X_train_legit = X_train_legit.astype("float32")
+    X_val_legit   = X_val_legit.astype("float32")
+
+
     print("\nClass distribution (train):")
     print(y_train.value_counts(normalize=True))
 
@@ -210,6 +216,15 @@ def main():
         verbose=1,
     )
 
+    reduce_lr = callbacks.ReduceLROnPlateau(
+        monitor="val_loss",
+        factor=0.5,
+        patience=2,
+        min_lr=1e-6,
+        verbose=1,
+    )
+
+
     print("\n🚀 Training autoencoder on legitimate transactions only...")
     history = autoencoder.fit(
         X_train_legit,
@@ -217,13 +232,17 @@ def main():
         validation_data=(X_val_legit, X_val_legit),
         epochs=100,
         batch_size=512,
-        callbacks=[early_stop],
+        callbacks=[early_stop, reduce_lr],
         verbose=1,
     )
 
     # Save loss curve
     plot_loss_curve(history, AE_LOSS_PLOT_PATH)
     print(f"📈 Saved loss curve to {AE_LOSS_PLOT_PATH}")
+
+    X_test_arr = X_test.values.astype("float32")
+    test_errors = reconstruction_errors(autoencoder, X_test_arr)
+
 
     # Compute reconstruction errors
     print("\n📊 Computing reconstruction errors...")
@@ -237,9 +256,13 @@ def main():
     print("  mean:", float(test_errors.mean()))
     print("  std: ", float(test_errors.std()))
 
-    # Choose threshold from validation legit errors (95th percentile)
-    threshold = float(np.percentile(val_legit_errors, 95))
-    print("\nChosen threshold (95th percentile of legit val errors):", threshold)
+    # Choose threshold from validation legit errors by target false-positive rate
+    # Example: allow 0.5% of legit to be flagged (adjust to your business tolerance)
+    TARGET_FPR = 0.005  # 0.5%
+    percentile = 100 * (1 - TARGET_FPR) # = 99.5
+    threshold = float(np.percentile(val_legit_errors, percentile))
+
+    print(f"\nChosen threshold ({percentile:.2f}th percentile of legit val errors): {threshold}")
 
     # Classify test samples based on threshold
     y_test_array = y_test.values
