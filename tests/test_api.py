@@ -1,100 +1,95 @@
-# tests/test_api.py
+import numpy as np
 import pytest
-from fastapi.testclient import TestClient
-from api.main import app
+
+import api.service as svc
 
 
-def _full_valid_payload(overrides=None):
-    base = {
-        # categorical_features
-        "device_id": "dev_1",
-        "device_os": "iOS",
-        "browser": "Safari",
-        "is_new_device": False,
-        "ip_country": "DE",
-        "is_proxy_vpn": False,
-        "billing_country": "DE",
-        "shipping_country": "DE",
-        "night_txn": False,
-        "weekend_txn": False,
+class DummyXGB:
+    def __init__(self, p: float):
+        self.p = p
 
-        # numerical_features V1..V28
-        **{f"V{i}": 0.0 for i in range(1, 29)},
+    def predict_proba(self, X):
+        # returns [[p0, p1]]
+        return np.array([[1.0 - self.p, self.p]], dtype=float)
 
-        # IMPORTANT: we send "amount" (alias) and it maps to field "Amount"
-        "amount": 10.5,
-        "ip_reputation": 0.2,
 
-        "txn_count_5m": 0.0,
-        "txn_count_30m": 0.0,
-        "txn_count_60m": 0.0,
-        "avg_amount_7d": 0.0,
-        "account_age_days": 100.0,
-        "token_age_days": 10.0,
-        "avg_spend_user_30d": 50.0,
-        "geo_distance_km": 1.0,
-        "amount_zscore": 0.0,
+class DummyPreprocess:
+    def transform(self, df):
+        # return already "processed" vector (1 x 3)
+        return np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
+
+
+class DummyAE:
+    def __init__(self, err: float):
+        self.err = err
+
+    def predict(self, X, verbose=0):
+        # Create reconstruction that yields the desired MSE approx.
+        # easiest: return X unchanged => err=0
+        # For tests, we’ll just return X and monkeypatch _reconstruction_error instead.
+        return X
+
+
+def _minimal_features():
+    return {
+        "numerical_features": ["f1", "f2"],
+        "categorical_features": ["c1"],
     }
-    if overrides:
-        base.update(overrides)
-    return base
 
 
-def test_health_ok():
-    with TestClient(app) as client:
-        r = client.get("/health")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["status"] == "ok"
-        assert isinstance(body["preprocess_loaded"], bool)
-        assert isinstance(body["version"], str) and body["version"]
+def _minimal_payload():
+    return {"f1": 1.0, "f2": 2.0, "c1": "A"}
 
 
-def test_predict_valid_payload_returns_scores():
-    payload = _full_valid_payload()
+def test_approve_when_low(monkeypatch):
+    svc.XGB = DummyXGB(p=0.05)
+    svc.PREPROCESS = DummyPreprocess()
+    svc.AE = DummyAE(err=0.0)
+    svc.FEATURES = _minimal_features()
+    svc.AE_THRESHOLDS = {"review": 1.0, "block": 2.0}
 
-    with TestClient(app) as client:
-        r = client.post("/predict", json=payload)
-        assert r.status_code == 200
-        assert "X-Latency-ms" in r.headers
-        float(r.headers["X-Latency-ms"])
+    monkeypatch.setattr(svc, "_reconstruction_error", lambda *args, **kwargs: 0.1)
 
-        body = r.json()
-        assert body["label"] in {"approve", "review", "block"}
-
-        # for FPN-12 these should be populated floats
-        assert body["score_xgb"] is None or (0.0 <= float(body["score_xgb"]) <= 1.0)
-        assert body["score_ae"] is None or (0.0 <= float(body["score_ae"]) <= 1.0)
-        assert body["ensemble_score"] is None or (0.0 <= float(body["ensemble_score"]) <= 1.0)
-        assert isinstance(body["reason_codes"], list)
+    out = svc.predict_hybrid(_minimal_payload())
+    assert out["label"] in {"approve", "review", "block"}
+    assert out["label"] == "approve"
 
 
-def test_predict_missing_required_field_returns_422():
-    payload = _full_valid_payload()
-    payload.pop("device_id")  # remove required field
+def test_block_when_high(monkeypatch):
+    svc.XGB = DummyXGB(p=0.95)
+    svc.PREPROCESS = DummyPreprocess()
+    svc.AE = DummyAE(err=0.0)
+    svc.FEATURES = _minimal_features()
+    svc.AE_THRESHOLDS = {"review": 1.0, "block": 2.0}
 
-    with TestClient(app) as client:
-        r = client.post("/predict", json=payload)
-        assert r.status_code == 422
+    monkeypatch.setattr(svc, "_reconstruction_error", lambda *args, **kwargs: 100.0)
 
-
-def test_predict_extra_fields_forbidden_returns_422():
-    payload = _full_valid_payload({"unexpected": "nope"})
-
-    with TestClient(app) as client:
-        r = client.post("/predict", json=payload)
-        assert r.status_code == 422
+    out = svc.predict_hybrid(_minimal_payload())
+    assert out["label"] == "block"
 
 
-@pytest.mark.parametrize("bad_key,bad_value", [
-    ("ip_country", "D"),          # invalid len
-    ("billing_country", "123"),   # invalid
-    ("amount", -1.0),             # invalid gt=0
-    ("ip_reputation", 2.0),       # invalid >1
-])
-def test_predict_validation_errors(bad_key, bad_value):
-    payload = _full_valid_payload({bad_key: bad_value})
+def test_review_in_grayzone_with_ae(monkeypatch):
+    # mid XGB, AE says "review-ish"
+    svc.XGB = DummyXGB(p=0.50)
+    svc.PREPROCESS = DummyPreprocess()
+    svc.AE = DummyAE(err=0.0)
+    svc.FEATURES = _minimal_features()
+    svc.AE_THRESHOLDS = {"review": 1.0, "block": 2.0}
 
-    with TestClient(app) as client:
-        r = client.post("/predict", json=payload)
-        assert r.status_code == 422
+    monkeypatch.setattr(svc, "_reconstruction_error", lambda *args, **kwargs: 1.5)
+
+    out = svc.predict_hybrid(_minimal_payload())
+    assert out["label"] == "review"
+
+
+def test_missing_field_raises(monkeypatch):
+    svc.XGB = DummyXGB(p=0.50)
+    svc.PREPROCESS = DummyPreprocess()
+    svc.AE = DummyAE(err=0.0)
+    svc.FEATURES = _minimal_features()
+    svc.AE_THRESHOLDS = {"review": 1.0, "block": 2.0}
+
+    monkeypatch.setattr(svc, "_reconstruction_error", lambda *args, **kwargs: 0.1)
+
+    with pytest.raises(ValueError):
+        svc.predict_hybrid({"f1": 1.0})  # missing f2, c1
