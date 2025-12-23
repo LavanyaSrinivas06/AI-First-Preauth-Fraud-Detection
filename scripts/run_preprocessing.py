@@ -28,9 +28,15 @@ TRAIN_PATH = DATA_DIR / "train.csv"
 VAL_PATH = DATA_DIR / "val.csv"
 TEST_PATH = DATA_DIR / "test.csv"
 
+TRAIN_NOSMOTE_PATH = DATA_DIR / "train_nosmote.csv"
+VAL_NOSMOTE_PATH   = DATA_DIR / "val_nosmote.csv"
+TEST_NOSMOTE_PATH  = DATA_DIR / "test_nosmote.csv"
+
+
 TRAIN_RAW_PATH = DATA_DIR / "train_raw.csv"
 VAL_RAW_PATH = DATA_DIR / "val_raw.csv"
 TEST_RAW_PATH = DATA_DIR / "test_raw.csv"
+
 
 PREPROCESSOR_PATH = ARTIFACTS_DIR / "preprocess.joblib"
 FEATURES_META_PATH = ARTIFACTS_DIR / "features.json"
@@ -39,6 +45,9 @@ REPORT_PATH = DOCS_DIR / "preprocessing_summary.md"
 
 TARGET_COL = "Class"   # label column
 TIME_COL = "Time"      # column used for time-based splitting
+
+USE_SMOTE = True    # whether to apply SMOTE on training set
+
 
 
 # ==== HELPER FUNCTIONS ========================================================
@@ -87,7 +96,7 @@ def identify_feature_columns(df: pd.DataFrame) -> tuple[list[str], list[str]]:
       - TARGET_COL (label)
       - TIME_COL   (used only for ordering, not as a feature)
     """
-    exclude_cols = {TARGET_COL, TIME_COL}
+    exclude_cols = {TARGET_COL, TIME_COL, "device_id"}
     feature_cols = [c for c in df.columns if c not in exclude_cols]
 
     # Categorical: object / category / bool
@@ -172,7 +181,7 @@ def main():
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. Load enriched dataset
-    df = load_enriched_dataset(sample_n=20000)
+    df = load_enriched_dataset(sample_n=None)
 
     # 2. Time-based splits
     train_df_raw, val_df_raw, test_df_raw = make_time_based_splits(df)
@@ -225,50 +234,65 @@ def main():
         X_test_processed, y_test, feature_names
     )
 
-    # 7. Apply SMOTE on TRAIN ONLY (to address class imbalance)
-    sm = SMOTE(random_state=42)
-    X_train_resampled, y_train_resampled = sm.fit_resample(
-        train_df_processed_before_smote.drop(columns=[TARGET_COL]),
-        train_df_processed_before_smote[TARGET_COL],
-    )
 
-    # Build final train dataframe after SMOTE
-    train_df_processed_after_smote = pd.DataFrame(
-        X_train_resampled,
-        columns=feature_names,
-    )
-    train_df_processed_after_smote[TARGET_COL] = y_train_resampled
+    # 7. Save NO-SMOTE processed splits (needed for Autoencoder)
+    train_df_processed_before_smote.to_csv(TRAIN_NOSMOTE_PATH, index=False)
+    val_df_processed.to_csv(VAL_NOSMOTE_PATH, index=False)
+    test_df_processed.to_csv(TEST_NOSMOTE_PATH, index=False)
 
-    # 8. Persist processed splits (features already transformed)
-    train_df_processed_after_smote.to_csv(TRAIN_PATH, index=False)
+# 8. Optionally apply SMOTE on TRAIN ONLY (for supervised models like XGBoost)
+    if USE_SMOTE:
+        sm = SMOTE(random_state=42)
+        X_train_resampled, y_train_resampled = sm.fit_resample(
+            train_df_processed_before_smote.drop(columns=[TARGET_COL]),
+            train_df_processed_before_smote[TARGET_COL],
+        )
+        print("SMOTE y distribution:", pd.Series(y_train_resampled).value_counts().to_dict())
+
+        train_df_processed_final = pd.DataFrame(X_train_resampled, columns=feature_names)
+        train_df_processed_final[TARGET_COL] = y_train_resampled    
+    else:
+        train_df_processed_final = train_df_processed_before_smote
+
+# 9. Persist processed splits (used by supervised training pipelines)
+    train_df_processed_final.to_csv(TRAIN_PATH, index=False)
     val_df_processed.to_csv(VAL_PATH, index=False)
     test_df_processed.to_csv(TEST_PATH, index=False)
 
-    # 9. Persist preprocessing pipeline artifact
+
+    # 10. Persist preprocessing pipeline artifact
     joblib.dump(preprocessor, PREPROCESSOR_PATH)
 
-    # 10. Persist feature metadata
+    # 11. Persist feature metadata
     features_metadata = {
         "target_column": TARGET_COL,
         "time_column": TIME_COL,
         "categorical_features": cat_cols,
         "numerical_features": num_cols,
         "feature_names_after_preprocessing": feature_names,
+
         "train_rows_before_smote": int(len(train_df_processed_before_smote)),
-        "train_rows_after_smote": int(len(train_df_processed_after_smote)),
         "val_rows": int(len(val_df_processed)),
         "test_rows": int(len(test_df_processed)),
+
+        "use_smote": USE_SMOTE,
+        "train_nosmote_path": str(TRAIN_NOSMOTE_PATH),
+        "val_nosmote_path": str(VAL_NOSMOTE_PATH),
+        "test_nosmote_path": str(TEST_NOSMOTE_PATH),
+        "train_rows_after_smote": int(len(train_df_processed_final)),
+
     }
+
 
     FEATURES_META_PATH.write_text(
         json.dumps(features_metadata, indent=2),
         encoding="utf-8",
     )
 
-    # 11. Write human-readable report
+    # 12. Write human-readable report
     write_report(
         train_df_before_smote=train_df_processed_before_smote,
-        train_df_after_smote=train_df_processed_after_smote,
+        train_df_after_smote=train_df_processed_final,
         val_df_processed=val_df_processed,
         test_df_processed=test_df_processed,
         cat_cols=cat_cols,

@@ -47,8 +47,11 @@ BROWSERS = ["Chrome", "Safari", "Edge", "Firefox"]
 
 
 def deterministic_device_id(time_series: pd.Series) -> pd.Series:
-    # Stable, human-readable pseudo user/device derived from Time
-    return ("dev_" + (time_series.astype(int) % 10000).astype(str)).astype("string")
+    # Deterministic pseudo device id derived from Time with higher cardinality
+    # (reduces collisions vs %10000)
+    t = time_series.astype(np.int64)
+    dev = (t * 1103515245 + 12345) % 2_000_000  # deterministic LCG
+    return ("dev_" + dev.astype(str)).astype("string")
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -78,6 +81,10 @@ def enrich(df: pd.DataFrame, seed: int) -> pd.DataFrame:
     ts = ANCHOR_TS + pd.to_timedelta(df["Time"], unit="s")
     df["_ts"] = ts
 
+    # Precompute unix seconds once (avoids Series.view deprecation inside groupby)
+    df["_ts_s"] = (df["_ts"].astype("int64") // 10**9).astype("int64")
+
+
     # --- Device/Browser
     df["device_os"] = rng.choice(DEVICE_OSES, size=len(df))
     df["browser"] = rng.choice(BROWSERS, size=len(df))
@@ -86,7 +93,9 @@ def enrich(df: pd.DataFrame, seed: int) -> pd.DataFrame:
 
     # --- Network
     df["ip_country"] = rng.choice(COUNTRIES, size=len(df))
-    df["is_proxy_vpn"] = rng.random(len(df)) < 0.10
+    p_vpn = np.where(df["Class"].values == 1, 0.35, 0.07)
+    df["is_proxy_vpn"] = (rng.random(len(df)) < p_vpn)
+
     # fraud skew higher ip reputation
     base_rep = rng.uniform(0, 1, size=len(df))
     boost = rng.uniform(0.2, 0.6, size=len(df))
@@ -94,8 +103,9 @@ def enrich(df: pd.DataFrame, seed: int) -> pd.DataFrame:
 
     # --- Velocity (per device_id, only up-to-current row)
     def compute_velocity(g: pd.DataFrame) -> pd.DataFrame:
-        arr = (g["_ts"].view("int64") // 10**9).to_numpy()
+        arr = g["_ts_s"].to_numpy()
         idx = np.arange(len(g))
+
 
         def win(seconds: int):
             left = np.searchsorted(arr, arr - seconds, side="left")
@@ -107,8 +117,15 @@ def enrich(df: pd.DataFrame, seed: int) -> pd.DataFrame:
         # rolling avg amount (proxy for 7d)
         g["avg_amount_7d"] = g["Amount"].rolling(50, min_periods=1).mean().round(2)
         return g
-
+    print(f"Computing velocity features over {df['device_id'].nunique()} devices...")
     df = df.groupby("device_id", group_keys=False, sort=False).apply(compute_velocity)
+    print("Velocity features done.")
+    # --- Fraud velocity bursts (post-velocity computation)
+    burst = (df["Class"].values == 1) & (rng.random(len(df)) < 0.25)
+
+    df.loc[burst, "txn_count_5m"] += rng.integers(2, 6, size=burst.sum())
+    df.loc[burst, "txn_count_30m"] += rng.integers(3, 8, size=burst.sum())
+    df.loc[burst, "txn_count_60m"] += rng.integers(4, 12, size=burst.sum())
 
     # --- Profile
     df["account_age_days"] = rng.integers(0, 1001, size=len(df))
@@ -125,7 +142,14 @@ def enrich(df: pd.DataFrame, seed: int) -> pd.DataFrame:
     lat_s = df["shipping_country"].map(lambda c: COUNTRY_COORDS[c][0]).astype(float)
     lon_s = df["shipping_country"].map(lambda c: COUNTRY_COORDS[c][1]).astype(float)
     df["geo_distance_km"] = haversine_km(lat_b, lon_b, lat_s, lon_s).round(1)
+    # Fraud tends to have higher country mismatch
+    flip = (rng.random(len(df)) < np.where(df["Class"].values == 1, 0.25, 0.02))
+    df.loc[flip, "shipping_country"] = rng.choice(COUNTRIES, size=int(flip.sum()))
     df["country_mismatch"] = df["billing_country"] != df["shipping_country"]
+
+    # --- Fraud more likely cross-border / distant
+    geo_boost = (df["Class"].values == 1) & (rng.random(len(df)) < 0.30)
+    df.loc[geo_boost, "geo_distance_km"] *= rng.uniform(1.3, 2.0, size=geo_boost.sum())
 
     # --- Derived
     def zscore(s: pd.Series) -> pd.Series:
@@ -137,8 +161,9 @@ def enrich(df: pd.DataFrame, seed: int) -> pd.DataFrame:
     df["night_txn"] = hour.isin([0, 1, 2, 3, 4, 5, 23])
     df["weekend_txn"] = df["_ts"].dt.weekday.isin([5, 6])
 
-    # cleanup temp
-    df = df.drop(columns=["_ts"])
+    # cleanup temp)
+    df = df.drop(columns=["_ts", "_ts_s"])
+
 
     # Optional: align to schema order if present
     if SCHEMA_PATH.exists():

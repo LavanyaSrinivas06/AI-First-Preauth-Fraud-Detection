@@ -25,6 +25,7 @@ from src.utils.data_loader import load_dataset
 
 
 from sklearn.metrics import (
+    fbeta_score,
     precision_score,
     recall_score,
     f1_score,
@@ -45,9 +46,13 @@ PLOT_DIR = ARTIFACT_DIR / "plots"
 ARTIFACT_DIR.mkdir(exist_ok=True)
 PLOT_DIR.mkdir(exist_ok=True)
 
-TRAIN_PATH = DATA_DIR / "train.csv"
-VAL_PATH = DATA_DIR / "val.csv"
-TEST_PATH = DATA_DIR / "test.csv"
+# XGBoost should train on SMOTEd data
+TRAIN_PATH = DATA_DIR / "train.csv"          # SMOTEd
+VAL_PATH   = DATA_DIR / "val.csv"            # not smoted
+TEST_PATH  = DATA_DIR / "test.csv"           # not smoted
+USED_SMOTE = True
+
+
 
 # ---------------------------
 # Load Data
@@ -74,7 +79,8 @@ print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 # ---------------------------
 print("\n🚀 Training baseline XGBoost model...")
 
-scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+#scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+scale_pos_weight = 1.0 if USED_SMOTE else (y_train == 0).sum() / (y_train == 1).sum()
 
 XGB_CONFIG = {
     "n_estimators": 300,
@@ -115,7 +121,7 @@ tuner = RandomizedSearchCV(
     ),
     param_distributions=param_grid,
     n_iter=30,
-    scoring="f1",
+    scoring="average_precision",
     cv=3,
     verbose=1,
     n_jobs=-1,
@@ -136,19 +142,20 @@ print("\n📌 Optimizing probability threshold...")
 
 val_probs = best_xgb.predict_proba(X_val)[:, 1]
 
-thresholds = np.linspace(0.1, 0.9, 90)
-best_f1 = 0
+thresholds = np.linspace(0.001, 0.5, 500)
+best_score = -1.0   # ✅ INITIALIZE
 best_t = 0.5
 
 for t in thresholds:
     preds = (val_probs >= t).astype(int)
-    f1 = f1_score(y_val, preds)
-    if f1 > best_f1:
-        best_f1 = f1
+    score = fbeta_score(y_val, preds, beta=2, zero_division=0)
+    if score > best_score:
+        best_score = score
         best_t = t
 
 print(f"✔ Best Threshold: {best_t:.4f}")
-print(f"✔ Best F1: {best_f1:.4f}")
+print(f"✔ Best F2: {best_score:.4f}")
+
 
 # ---------------------------
 # Final Evaluation Function
