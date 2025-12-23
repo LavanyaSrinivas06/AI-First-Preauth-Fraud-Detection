@@ -1,0 +1,1 @@
+{"ts": 1766450807, "request_id": null, "object": "risk_assessment", "id": "ra_1947e889185648d5a297a9bd", "payload_hash": "68aad1e53c53b0f1442a0a53d6df9e806f82bd6ff99dc20a0627ac6293d11f8b", "score_xgb": 8.944020009948872e-06, "ae_error": null, "ae_bucket": null, "label": "approve", "decided_by": "xgb_low", "latency_ms": 124.29687508847564}
