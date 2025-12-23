@@ -1,16 +1,18 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
+
 from api.core.config import get_settings
 from api.services.model_service import ensure_loaded
-from api.services.store import init_db
 
-router = APIRouter()
+router = APIRouter(tags=["health"])
 
 
-@router.get("/health")
-def health():
+@router.get("/health/api")
+def health_api():
+    return {"status": "ok"}
+
+
+@router.get("/health/model")
+def health_model():
     settings = get_settings()
-    init_db(settings.abs_sqlite_path())
     _ = ensure_loaded(settings)
     return {"status": "ok", "models_loaded": True}

@@ -1,180 +1,89 @@
+# api/services/store.py
 from __future__ import annotations
 
-import sqlite3
+import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
+
+# Simple file-based stores (thesis-friendly)
+REVIEW_QUEUE_PATH = Path("artifacts/review_queue.jsonl")
+FEEDBACK_LOG_PATH = Path("artifacts/feedback_log.jsonl")
 
 
-def init_db(db_path: Path):
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS risk_assessments (
-        id TEXT PRIMARY KEY,
-        created INTEGER,
-        payload_hash TEXT,
-        label TEXT,
-        decided_by TEXT,
-        score_xgb REAL,
-        ae_error REAL,
-        ae_bucket TEXT,
-        latency_ms REAL
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS reviews (
-        id TEXT PRIMARY KEY,
-        created INTEGER,
-        updated INTEGER,
-        risk_assessment_id TEXT,
-        status TEXT,
-        analyst_decision TEXT,
-        notes TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS feedback_events (
-        id TEXT PRIMARY KEY,
-        created INTEGER,
-        risk_assessment_id TEXT,
-        outcome TEXT,
-        notes TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+def _ensure_parent(p: Path) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _conn(db_path: Path):
-    return sqlite3.connect(db_path)
+def append_jsonl(path: Path, obj: Dict[str, Any]) -> None:
+    _ensure_parent(path)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
-def insert_risk_assessment(db_path: Path, rec: Dict[str, Any]):
-    conn = _conn(db_path)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO risk_assessments
-        (id, created, payload_hash, label, decided_by, score_xgb, ae_error, ae_bucket, latency_ms)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            rec["id"],
-            rec["created"],
-            rec["payload_hash"],
-            rec["label"],
-            rec["decided_by"],
-            rec["score_xgb"],
-            rec.get("ae_error"),
-            rec.get("ae_bucket"),
-            rec["latency_ms"],
-        ),
-    )
-    conn.commit()
-    conn.close()
+def load_jsonl(path: Path, limit: int = 200) -> List[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    items: List[Dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                items.append(json.loads(line))
+            except Exception:
+                continue
+    # newest first
+    items = items[::-1]
+    return items[:limit]
 
 
-def get_risk_assessment(db_path: Path, rid: str) -> Optional[Dict[str, Any]]:
-    conn = _conn(db_path)
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM risk_assessments WHERE id = ?", (rid,))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return None
-    keys = ["id", "created", "payload_hash", "label", "decided_by", "score_xgb", "ae_error", "ae_bucket", "latency_ms"]
-    return dict(zip(keys, row))
-
-
-def create_review(db_path: Path, review: Dict[str, Any]):
-    conn = _conn(db_path)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO reviews
-        (id, created, updated, risk_assessment_id, status, analyst_decision, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            review["id"],
-            review["created"],
-            review["updated"],
-            review["risk_assessment_id"],
-            review["status"],
-            review.get("analyst_decision"),
-            review.get("notes"),
-        ),
-    )
-    conn.commit()
-    conn.close()
-
-
-def list_reviews(db_path: Path, status: Optional[str] = None) -> List[Dict[str, Any]]:
-    conn = _conn(db_path)
-    cur = conn.cursor()
-    if status:
-        cur.execute("SELECT * FROM reviews WHERE status = ? ORDER BY created DESC", (status,))
-    else:
-        cur.execute("SELECT * FROM reviews ORDER BY created DESC")
-    rows = cur.fetchall()
-    conn.close()
-    keys = ["id", "created", "updated", "risk_assessment_id", "status", "analyst_decision", "notes"]
-    return [dict(zip(keys, r)) for r in rows]
-
-
-def get_review(db_path: Path, review_id: str) -> Optional[Dict[str, Any]]:
-    conn = _conn(db_path)
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM reviews WHERE id = ?", (review_id,))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return None
-    keys = ["id", "created", "updated", "risk_assessment_id", "status", "analyst_decision", "notes"]
-    return dict(zip(keys, row))
-
-
-def update_review(db_path: Path, review_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    existing = get_review(db_path, review_id)
-    if not existing:
-        return None
+def save_review_if_needed(
+    decision: str,
+    payload: Dict[str, Any],
+    p_xgb: Optional[float],
+    ae_err: Optional[float],
+    payload_hash: str,
+    reason_codes: List[str],
+) -> None:
+    """
+    Persist only REVIEW events for the dashboard queue.
+    """
+    if decision != "REVIEW":
+        return
 
     now = int(time.time())
-    status = patch.get("status", existing["status"])
-    analyst_decision = patch.get("analyst_decision", existing["analyst_decision"])
-    notes = patch.get("notes", existing["notes"])
 
-    conn = _conn(db_path)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        UPDATE reviews
-        SET updated = ?, status = ?, analyst_decision = ?, notes = ?
-        WHERE id = ?
-        """,
-        (now, status, analyst_decision, notes, review_id),
-    )
-    conn.commit()
-    conn.close()
-    return get_review(db_path, review_id)
+    item = {
+        "id": f"rev_{payload_hash[:16]}",
+        "created": now,
+        "txn_id": payload.get("txn_id"),
+        "timestamp": payload.get("timestamp"),
+        "decision": decision,
+        "score_xgb": p_xgb,
+        "ae_error": ae_err,
+        "payload_hash": payload_hash,
+        "reason_codes": reason_codes,
+        # keep payload minimal (avoid PII); include only what dashboard needs
+        "amount": payload.get("amount"),
+        "country": payload.get("country"),
+        "ip_country": payload.get("ip_country"),
+        "currency": payload.get("currency"),
+        "card_currency": payload.get("card_currency"),
+        "hour": payload.get("hour"),
+        "velocity_1h": payload.get("velocity_1h"),
+        "velocity_24h": payload.get("velocity_24h"),
+        "is_new_device": payload.get("is_new_device"),
+        "is_proxy_vpn": payload.get("is_proxy_vpn"),
+    }
+
+    append_jsonl(REVIEW_QUEUE_PATH, item)
 
 
-def insert_feedback_event(db_path: Path, ev: Dict[str, Any]):
-    conn = _conn(db_path)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO feedback_events
-        (id, created, risk_assessment_id, outcome, notes)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (ev["id"], ev["created"], ev["risk_assessment_id"], ev["outcome"], ev.get("notes")),
-    )
-    conn.commit()
-    conn.close()
+def load_review_queue(limit: int = 200) -> List[Dict[str, Any]]:
+    return load_jsonl(REVIEW_QUEUE_PATH, limit=limit)
+
+
+def append_feedback_event(event: Dict[str, Any]) -> None:
+    append_jsonl(FEEDBACK_LOG_PATH, event)
