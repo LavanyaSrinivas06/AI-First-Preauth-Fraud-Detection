@@ -52,6 +52,8 @@
   {"field":"billing_country","dtype":"string","description":"Billing country (ISO-2)"},
   {"field":"shipping_country","dtype":"string","description":"Shipping country (ISO-2)"},
   {"field":"geo_distance_km","dtype":"float","description":"Distance billing vs shipping"},
+  { "field": "country_mismatch", "dtype": "bool" },
+
 
   {"field":"amount_zscore","dtype":"float","description":"Z-score of Amount"},
   {"field":"night_txn","dtype":"bool","description":"Is night time transaction"},
