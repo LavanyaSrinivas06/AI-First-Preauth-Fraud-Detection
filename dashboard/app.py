@@ -15,12 +15,12 @@ import yaml
 from utils import (
     append_review_log,
     compute_amount_threshold,
-    ensure_sample_explainability_assets,
-    find_lime_html,
     find_shap_png,
+    find_fallback_shap,
     generate_reasons_for_row,
     load_review_log,
 )
+
 
 # ----------------------------
 # Config
@@ -332,29 +332,19 @@ def page_details(cfg: Dict[str, Any], mode: str, analyst: str, min_score: float,
     with st.expander("Raw features", expanded=False):
         st.dataframe(pd.DataFrame(row).rename(columns={0: "value"}), use_container_width=True)
 
-    # SHAP / LIME assets
-    st.markdown("### Explanations (SHAP / LIME)")
+    # SHAP explainability
+    st.markdown("### Model explainability (SHAP)")
     static_dir = cfg_get(cfg, "paths", "static_dir", default="dashboard/static")
+
     shap_png = find_shap_png(static_dir, str(txn))
-    lime_html = find_lime_html(static_dir, str(txn))
-    fallback_shap, fallback_lime = ensure_sample_explainability_assets(static_dir)
+    fallback_shap = find_fallback_shap(static_dir)
 
     if shap_png:
-        st.image(shap_png, caption=f"SHAP summary for txn_id={txn}", use_container_width=True)
+        st.image(shap_png, caption=f"SHAP explanation for txn_id={txn}", use_container_width=True)
     elif fallback_shap:
-        st.image(fallback_shap, caption="SHAP example (no txn-specific SHAP found)", use_container_width=True)
+        st.image(fallback_shap, caption="SHAP example (no transaction-specific SHAP found)", use_container_width=True)
     else:
-        st.info("No SHAP image found. Add dashboard/static/shap_<txn_id>.png (or shap_example.png).")
-
-    if lime_html:
-        with open(lime_html, "r", encoding="utf-8") as f:
-            st.components.v1.html(f.read(), height=650, scrolling=True)
-    elif fallback_lime:
-        with open(fallback_lime, "r", encoding="utf-8") as f:
-            st.components.v1.html(f.read(), height=650, scrolling=True)
-        st.caption("LIME example (no txn-specific LIME found)")
-    else:
-        st.info("No LIME HTML found. Add dashboard/static/lime_<txn_id>.html (or lime_example.html).")
+        st.info("No SHAP explanation available for this transaction.")
 
     # Actions (persist)
     st.markdown("### Analyst action")
