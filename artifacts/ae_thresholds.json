@@ -1,7 +1,8 @@
 {
-  "review": 2.8606350898742705,
-  "block": 21.662972305300073,
-  "max_fpr_review": 0.01,
-  "max_fpr_block": 0.001,
-  "note": "Decisions: approve < review < block based on reconstruction error."
+  "review": 0.6915820717811582,
+  "block": 4.895552730560322,
+  "p_review": 95.0,
+  "p_block": 99.5,
+  "n_legit": 42665,
+  "source": "data/processed/val.csv"
 }

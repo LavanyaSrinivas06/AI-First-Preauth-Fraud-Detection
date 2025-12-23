@@ -1,26 +1,33 @@
+# api/routers/feedback.py
 from __future__ import annotations
 
-import time
-from typing import Any, Dict
+from fastapi import APIRouter, Depends
 
-from fastapi import APIRouter
-
-from api.services.store import append_feedback_event
+from api.core.config import Settings, get_settings
+from api.core.errors import ApiError
+from api.services.store import get_review_by_id, insert_feedback_event
 
 router = APIRouter(tags=["feedback"])
 
 
 @router.post("/feedback/label")
-def feedback_label(payload: Dict[str, Any]):
+def feedback_label(payload: dict, settings: Settings = Depends(get_settings)):
     """
-    Example:
-    {
-      "review_id": "rev_xxx",
-      "label": "fraud" | "legit",
-      "notes": "optional"
-    }
+    payload example:
+    { "review_id": "rev_....", "outcome": "APPROVE", "notes": "false positive" }
     """
-    event = dict(payload)
-    event["created"] = int(time.time())
-    append_feedback_event(event)
-    return {"status": "ok"}
+    review_id = payload.get("review_id")
+    outcome = payload.get("outcome")
+    notes = payload.get("notes")
+
+    if not review_id:
+        raise ApiError(400, "missing_required_field", "Missing review_id", param="review_id")
+    if outcome not in {"APPROVE", "BLOCK"}:
+        raise ApiError(400, "invalid_request_error", "outcome must be APPROVE or BLOCK", param="outcome")
+
+    rev = get_review_by_id(settings.abs_sqlite_path(), review_id)
+    if not rev:
+        raise ApiError(404, "resource_missing", "Review not found.", param="review_id")
+
+    fb_id = insert_feedback_event(settings.abs_sqlite_path(), review_id, outcome, notes)
+    return {"status": "ok", "feedback_id": fb_id, "review_id": review_id}

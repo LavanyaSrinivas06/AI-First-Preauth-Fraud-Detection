@@ -1,78 +1,88 @@
+# api/routers/preauth.py
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends
 
 from api.core.config import Settings, get_settings
-from api.services.model_service import predict_scores
-from api.services.store import save_review_if_needed
+from api.services.model_service import predict_from_processed_102
+from api.services.store import save_review_if_needed, log_decision
 
 router = APIRouter(tags=["preauth"])
+
+REASON_TEXT = {
+    "xgb_high_risk": "XGBoost predicts high fraud risk (above block threshold).",
+    "xgb_gray_zone": "XGBoost is uncertain (between approve and block thresholds).",
+    "ae_elevated": "Autoencoder anomaly is elevated (unusual vs. normal legitimate behavior).",
+    "ae_extreme": "Autoencoder anomaly is extreme (strong deviation from legitimate baseline).",
+}
+
+def reason_details(codes: List[str]) -> List[Dict[str, str]]:
+    return [{"code": c, "message": REASON_TEXT.get(c, c)} for c in codes]
 
 
 @router.post("/preauth/decision")
 def preauth_decision(payload: Dict[str, Any], settings: Settings = Depends(get_settings)):
-    """
-    Returns: APPROVE | REVIEW | BLOCK
-    """
+    p_xgb, ae_err, payload_hash, ae_pct, ae_bkt = predict_from_processed_102(settings, payload)
 
-    p_xgb, ae_err, payload_hash, reason_codes = predict_scores(settings, payload)
+    if p_xgb < settings.xgb_t_low:
+        decision = "APPROVE"
+        reason_codes: List[str] = []
+        ae_err, ae_pct, ae_bkt = None, None, "n/a"
 
-    # --- Rule overrides (stable demos) ---
-    hard_block = False
-    hard_review = False
-
-    if "high_velocity_1h" in reason_codes or "high_velocity_24h" in reason_codes:
-        hard_block = True
-
-    if "proxy_vpn" in reason_codes and "geo_mismatch" in reason_codes:
-        hard_block = True
-
-    if "high_amount" in reason_codes and ("geo_mismatch" in reason_codes or "currency_mismatch" in reason_codes):
-        hard_block = True
-
-    if (not hard_block) and (
-        "geo_mismatch" in reason_codes
-        or "currency_mismatch" in reason_codes
-        or "night_txn" in reason_codes
-        or "med_velocity_1h" in reason_codes
-        or "med_velocity_24h" in reason_codes
-        or "proxy_vpn" in reason_codes
-    ):
-        hard_review = True
-
-    # --- Model-based decision ---
-    if hard_block:
+    elif p_xgb >= settings.xgb_t_high:
         decision = "BLOCK"
-    elif hard_review:
-        decision = "REVIEW"
-    else:
-        # purely model-driven
-        if p_xgb < settings.xgb_t_low:
-            decision = "APPROVE"
-        elif p_xgb >= settings.xgb_t_high:
-            decision = "BLOCK"
-        else:
-            # gray zone -> AE helps
-            decision = "BLOCK" if ae_err >= settings.ae_block else "REVIEW"
+        reason_codes = ["xgb_high_risk"]
+        ae_err, ae_pct, ae_bkt = None, None, "n/a"
 
-    # Persist only REVIEW for dashboard queue
-    save_review_if_needed(
+    else:
+        reason_codes = ["xgb_gray_zone"]
+        if ae_bkt == "extreme":
+            decision = "BLOCK"
+            reason_codes.append("ae_extreme")
+        else:
+            decision = "REVIEW"
+            if ae_bkt == "elevated":
+                reason_codes.append("ae_elevated")
+
+    review_id = save_review_if_needed(
+        sqlite_path=settings.abs_sqlite_path(),
         decision=decision,
         payload=payload,
         p_xgb=p_xgb,
         ae_err=ae_err,
         payload_hash=payload_hash,
         reason_codes=reason_codes,
+        ae_percentile=ae_pct,
+        ae_bucket=ae_bkt,
     )
 
-    # For thesis: only show reason_codes when not APPROVE
+    log_decision(
+        sqlite_path=settings.abs_sqlite_path(),
+        decision=decision,
+        payload=payload,
+        p_xgb=p_xgb,
+        ae_err=ae_err,
+        payload_hash=payload_hash,
+        reason_codes=reason_codes,
+        ae_percentile=ae_pct,
+        ae_bucket=ae_bkt,
+    )
+
     resp = {
         "decision": decision,
-        "scores": {"xgb_probability": round(p_xgb, 6), "ae_error": round(ae_err, 6)},
+        "request": {"payload_hash": payload_hash, "review_id": review_id},
+        "scores": {
+            "xgb_probability": float(p_xgb),
+            "ae_error": float(ae_err) if ae_err is not None else None,
+            "ae_bucket": ae_bkt,
+            "ae_percentile_vs_legit": float(ae_pct) if ae_pct is not None else None,
+        },
     }
+
     if decision != "APPROVE":
         resp["reason_codes"] = reason_codes
+        resp["reason_details"] = reason_details(reason_codes)
 
     return resp

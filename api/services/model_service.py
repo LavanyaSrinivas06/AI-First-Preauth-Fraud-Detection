@@ -1,3 +1,4 @@
+# api/services/model_service.py
 from __future__ import annotations
 
 import hashlib
@@ -8,137 +9,228 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
+import pandas as pd
 from tensorflow.keras.models import load_model
 
 from api.core.config import Settings
 from api.core.errors import ApiError
-from api.services.feature_adapter import adapt_payload_to_processed_102, validate_checkout_payload
 
 
+# -------------------------
+# Loaded artifacts cache
+# -------------------------
 @dataclass
 class LoadedArtifacts:
-    preprocess: Any
     xgb: Any
     ae: Any
-    model_features: List[str]
+    model_features: List[str]              # exact 102 processed features (ORDER MATTERS)
+    ae_review: float
+    ae_block: float
+    ae_legit_sorted_errors: np.ndarray     # baseline distribution for AE percentile
 
 
 _ART: Optional[LoadedArtifacts] = None
 
 
+# -------------------------
+# Helpers
+# -------------------------
 def _sha256_dict(d: Dict[str, Any]) -> str:
     raw = json.dumps(d, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
+def _ensure_numpy_dense(X) -> np.ndarray:
+    if hasattr(X, "toarray"):  # sparse
+        X = X.toarray()
+    return np.asarray(X, dtype="float32")
+
+
+def _load_ae_thresholds(art_dir: Path, settings: Settings) -> Tuple[float, float]:
+    """
+    Expects JSON like:
+    {
+      "review": 0.6915,
+      "block": 4.8955,
+      ...
+    }
+    """
+    p = art_dir / settings.ae_thresholds_path
+    if not p.exists():
+        raise ApiError(500, "artifact_missing", f"Missing AE thresholds file: {p}")
+
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+        return float(obj["review"]), float(obj["block"])
+    except Exception as e:
+        raise ApiError(500, "artifact_invalid", f"Invalid AE thresholds JSON: {type(e).__name__}: {e}")
+
+
+def _load_model_schema_from_processed_train(settings: Settings) -> List[str]:
+    """
+    Most reliable schema source = processed train.csv (because it matches what XGB saw).
+    """
+    train_path = Path(settings.data_dir) / "train.csv"
+    if not train_path.exists():
+        raise ApiError(500, "artifact_missing", f"Missing processed train.csv for schema: {train_path}")
+
+    df = pd.read_csv(train_path, nrows=1)
+    if "Class" not in df.columns:
+        raise ApiError(500, "artifact_invalid", f"{train_path} must contain 'Class' column.")
+
+    feats = [c for c in df.columns if c != "Class"]
+    if len(feats) != 102:
+        raise ApiError(
+            500,
+            "artifact_invalid",
+            f"Expected 102 processed features, found {len(feats)} in {train_path}.",
+        )
+    return feats
+
+
+def _compute_legit_error_baseline(settings: Settings, ae_model) -> np.ndarray:
+    """
+    Compute reconstruction errors distribution for legit (Class==0) from processed val.csv.
+    This enables a human-readable percentile: "AE anomaly: 99.9%".
+    """
+    val_path = Path(settings.data_dir) / "val.csv"
+    if not val_path.exists():
+        raise ApiError(500, "artifact_missing", f"Missing validation file for AE baseline: {val_path}")
+
+    try:
+        df = pd.read_csv(val_path)
+    except Exception as e:
+        raise ApiError(500, "artifact_load_failed", f"Failed reading {val_path}: {type(e).__name__}: {e}")
+
+    if "Class" not in df.columns:
+        raise ApiError(500, "artifact_invalid", f"{val_path} must contain 'Class' column.")
+
+    legit = df[df["Class"].astype(int) == 0]
+    if legit.empty:
+        raise ApiError(500, "artifact_invalid", f"No legit rows (Class==0) found in {val_path}")
+
+    X_legit = _ensure_numpy_dense(legit.drop(columns=["Class"]).values)
+
+    batch = 2048
+    errs: List[float] = []
+    for i in range(0, X_legit.shape[0], batch):
+        xb = X_legit[i : i + batch]
+        xb_rec = ae_model.predict(xb, verbose=0)
+        eb = np.mean((xb - xb_rec) ** 2, axis=1)
+        errs.extend([float(x) for x in eb])
+
+    base = np.asarray(errs, dtype="float32")
+    base.sort()
+    return base
+
+
+# -------------------------
+# Public: load once
+# -------------------------
 def ensure_loaded(settings: Settings) -> LoadedArtifacts:
     global _ART
     if _ART is not None:
         return _ART
 
-    art = settings.artifacts_path()
+    art_dir = settings.artifacts_path()
+
     try:
-        preprocess = joblib.load(art / settings.preprocess_path)
-        xgb = joblib.load(art / settings.xgb_model_path)
-        ae = load_model(art / settings.ae_model_path, compile=False)
+        xgb = joblib.load(art_dir / settings.xgb_model_path)
+        ae = load_model(art_dir / settings.ae_model_path, compile=False)
 
-        # IMPORTANT: use pipeline feature names as the contract for "102 processed features"
-        try:
-            model_features = list(preprocess.get_feature_names_out())
-        except Exception:
-            # fallback: if preprocess doesn't expose names, we cannot safely adapt
-            raise ApiError(500, "artifact_invalid", "Preprocess pipeline does not expose feature names.")
+        model_features = _load_model_schema_from_processed_train(settings)
+        ae_review, ae_block = _load_ae_thresholds(art_dir, settings)
+        ae_legit_sorted_errors = _compute_legit_error_baseline(settings, ae)
 
-    except FileNotFoundError as e:
-        raise ApiError(500, "artifact_missing", f"Missing artifact file: {e}")
     except ApiError:
         raise
+    except FileNotFoundError as e:
+        raise ApiError(500, "artifact_missing", f"Missing artifact file: {e}")
     except Exception as e:
         raise ApiError(500, "artifact_load_failed", f"Failed loading artifacts: {type(e).__name__}: {e}")
 
-    _ART = LoadedArtifacts(preprocess=preprocess, xgb=xgb, ae=ae, model_features=model_features)
+    _ART = LoadedArtifacts(
+        xgb=xgb,
+        ae=ae,
+        model_features=model_features,
+        ae_review=ae_review,
+        ae_block=ae_block,
+        ae_legit_sorted_errors=ae_legit_sorted_errors,
+    )
     return _ART
 
 
-def score_xgb(art: LoadedArtifacts, X: np.ndarray) -> float:
-    return float(art.xgb.predict_proba(X)[:, 1][0])
+# -------------------------
+# Scoring utils
+# -------------------------
+def _validate_processed_payload(payload: Dict[str, Any], model_features: List[str]) -> None:
+    missing = [k for k in model_features if k not in payload]
+    if missing:
+        raise ApiError(
+            400,
+            "missing_required_field",
+            f"Missing required processed feature fields: {missing[:10]}{'...' if len(missing) > 10 else ''}",
+            param="data",
+        )
 
 
-def ae_reconstruction_error(art: LoadedArtifacts, X: np.ndarray) -> float:
-    X = np.asarray(X).astype("float32")
-    X_rec = art.ae.predict(X, verbose=0)
-    return float(np.mean((X - X_rec) ** 2, axis=1)[0])
+def score_xgb(art: LoadedArtifacts, X_df: pd.DataFrame) -> float:
+    return float(art.xgb.predict_proba(X_df)[:, 1][0])
 
 
-def build_reason_codes(payload: Dict[str, Any], settings: Settings) -> List[str]:
-    reasons: List[str] = []
-
-    country = str(payload.get("country"))
-    ip_country = str(payload.get("ip_country"))
-    currency = str(payload.get("currency"))
-    card_currency = str(payload.get("card_currency"))
-    hour = int(payload.get("hour", 12))
-    v1h = int(payload.get("velocity_1h", 0))
-    v24h = int(payload.get("velocity_24h", 0))
-    is_vpn = bool(payload.get("is_proxy_vpn", False))
-    amt = float(payload.get("amount", 0.0))
-
-    if country and ip_country and country != ip_country:
-        reasons.append("geo_mismatch")
-
-    if currency and card_currency and currency != card_currency:
-        reasons.append("currency_mismatch")
-
-    if hour in {0, 1, 2, 3, 4, 5}:
-        reasons.append("night_txn")
-
-    if v1h >= settings.rule_velocity_1h_block:
-        reasons.append("high_velocity_1h")
-    elif v1h >= settings.rule_velocity_1h_review:
-        reasons.append("med_velocity_1h")
-
-    if v24h >= settings.rule_velocity_24h_block:
-        reasons.append("high_velocity_24h")
-    elif v24h >= settings.rule_velocity_24h_review:
-        reasons.append("med_velocity_24h")
-
-    if amt >= settings.rule_amount_block:
-        reasons.append("high_amount")
-
-    if is_vpn:
-        reasons.append("proxy_vpn")
-
-    return reasons
+def ae_reconstruction_error(art: LoadedArtifacts, X_dense: np.ndarray) -> float:
+    X_rec = art.ae.predict(X_dense, verbose=0)
+    return float(np.mean((X_dense - X_rec) ** 2, axis=1)[0])
 
 
-def predict_scores(
+def ae_percentile_vs_legit(art: LoadedArtifacts, ae_err: float) -> Optional[float]:
+    base = art.ae_legit_sorted_errors
+    if base is None or len(base) == 0:
+        return None
+    rank = int(np.searchsorted(base, ae_err, side="right"))
+    return float(100.0 * rank / float(len(base)))
+
+
+def ae_bucket(art: LoadedArtifacts, ae_err: float) -> str:
+    if ae_err >= art.ae_block:
+        return "extreme"
+    if ae_err >= art.ae_review:
+        return "elevated"
+    return "normal"
+
+
+# -------------------------
+# MAIN entry for Option A
+# -------------------------
+def predict_from_processed_102(
     settings: Settings,
     payload: Dict[str, Any],
-) -> Tuple[float, float, str, List[str]]:
+) -> Tuple[float, Optional[float], str, Optional[float], str]:
     """
-    Returns: (p_xgb, ae_err, payload_hash, reason_codes)
+    Option A (thesis-clean):
+    Payload MUST contain the exact 102 processed features (same as train/val/test).
+    Returns:
+      (p_xgb, ae_err_or_none, payload_hash, ae_pct_or_none, ae_bucket_or_na)
     """
     art = ensure_loaded(settings)
     payload_hash = _sha256_dict(payload)
 
-    # validate checkout payload
-    try:
-        validate_checkout_payload(payload)
-    except ValueError as e:
-        raise ApiError(400, "missing_required_field", str(e), param="data")
+    _validate_processed_payload(payload, art.model_features)
 
-    # adapt checkout -> 102 processed features
-    df_102 = adapt_payload_to_processed_102(payload, art.model_features)
+    # Build row in correct order
+    row = {k: payload[k] for k in art.model_features}
+    X_df = pd.DataFrame([row], columns=art.model_features)
 
-    # Some repos store preprocess as identity; some as real transformer.
-    # We try transform, else fallback to raw 102 matrix.
-    try:
-        X = art.preprocess.transform(df_102)
-    except Exception:
-        X = df_102.values
+    # XGB always
+    p_xgb = score_xgb(art, X_df)
 
-    p_xgb = score_xgb(art, X)
-    ae_err = ae_reconstruction_error(art, X)
+    # AE only in gray zone
+    if not (settings.xgb_t_low <= p_xgb < settings.xgb_t_high):
+        return p_xgb, None, payload_hash, None, "n/a"
 
-    reason_codes = build_reason_codes(payload, settings)
-    return p_xgb, ae_err, payload_hash, reason_codes
+    X_dense = _ensure_numpy_dense(X_df.values)
+    ae_err = ae_reconstruction_error(art, X_dense)
+    ae_pct = ae_percentile_vs_legit(art, ae_err)
+    ae_bkt = ae_bucket(art, ae_err)
+
+    return p_xgb, ae_err, payload_hash, ae_pct, ae_bkt
