@@ -38,5 +38,5 @@ def register_exception_handlers(app: FastAPI):
         # keep it safe; do not leak internals in API response
         return JSONResponse(
             status_code=500,
-            content=stripe_error("internal_error", "An internal error occurred."),
+            content=stripe_error("internal_error", f"{type(exc).__name__}: {exc}" ),
         )
