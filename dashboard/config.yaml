@@ -1,0 +1,52 @@
+# dashboard/config.yaml
+
+app:
+  title: "FPN Review Dashboard"
+
+data_source:
+  mode: "local"              # local | api
+  api_base_url: "http://127.0.0.1:8000"
+
+paths:
+  enriched_parquet: "data/processed/enriched.parquet"
+  review_log_parquet: "data/review_log.parquet"
+  static_dir: "dashboard/static"
+
+queue:
+  # used in local mode to simulate a queue
+  min_ensemble_score: 0.58
+  max_rows: 500
+
+columns:
+  # if some columns don't exist, code will gracefully ignore them
+  txn_id: "txn_id"
+  timestamp: "timestamp"
+  amount: "amount"
+  country: "country"
+  billing_country: "billing_country"
+  ip_country: "ip_country"
+  currency: "currency"
+  card_currency: "card_currency"
+  merchant_country: "merchant_country"
+  hour: "hour"
+  is_night: "is_night"
+  velocity_1h: "velocity_1h"
+  velocity_24h: "velocity_24h"
+  is_new_device: "is_new_device"
+  is_new_email: "is_new_email"
+  days_since_first_seen: "days_since_first_seen"
+
+scores:
+  score_xgb: "score_xgb"
+  score_ae: "score_ae"
+  ensemble_score: "ensemble_score"
+  proposed_label: "proposed_label"   # optional
+
+explainability:
+  # rule-based reasons (works both in local + api fallback)
+  high_amount_quantile: 0.95         # per-queue quantile threshold
+  night_hours: [0, 1, 2, 3, 4, 5]
+  velocity_1h_threshold: 6
+  velocity_24h_threshold: 20
+  risk_countries: ["NG", "GH", "PK", "BD", "RU", "UA"]
+  max_reasons: 6
