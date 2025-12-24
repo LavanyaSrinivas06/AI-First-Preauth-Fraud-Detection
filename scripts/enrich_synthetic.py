@@ -1,3 +1,4 @@
+#scripts/enrich_synthetic.py
 #!/usr/bin/env python3
 """
 Synthetic enrichment for Kaggle creditcard.csv (CSV-first).
