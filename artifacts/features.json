@@ -159,11 +159,20 @@
     "cat__weekend_txn_True"
   ],
   "train_rows_before_smote": 199364,
+  "train_rows_after_smote": 397960,
   "val_rows": 42721,
   "test_rows": 42722,
   "use_smote": true,
-  "train_nosmote_path": "data/processed/train_nosmote.csv",
-  "val_nosmote_path": "data/processed/val_nosmote.csv",
-  "test_nosmote_path": "data/processed/test_nosmote.csv",
-  "train_rows_after_smote": 397960
+  "paths": {
+    "train_raw": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/train_raw.csv",
+    "val_raw": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/val_raw.csv",
+    "test_raw": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/test_raw.csv",
+    "train_nosmote": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/train_nosmote.csv",
+    "val_nosmote": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/val_nosmote.csv",
+    "test_nosmote": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/test_nosmote.csv",
+    "train": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/train.csv",
+    "val": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/val.csv",
+    "test": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/test.csv",
+    "preprocess_artifact": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/artifacts/preprocess.joblib"
+  }
 }
