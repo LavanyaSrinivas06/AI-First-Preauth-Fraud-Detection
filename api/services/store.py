@@ -76,10 +76,24 @@ def init_db(sqlite_path: Path) -> None:
     finally:
         con.close()
 
-def _payload_min(payload: Dict[str, Any]) -> Dict[str, Any]:
-    # If payload is processed-102, it won’t contain these checkout fields; that’s ok (they’ll be None).
+def _is_checkout_payload(payload: Dict[str, Any]) -> bool:
+    # A lightweight heuristic: if these exist, it's checkout-like
+    keys = {"amount", "country", "ip_country", "currency", "card_currency"}
+    return any(k in payload for k in keys)
+
+
+def _is_processed_102(payload: Dict[str, Any]) -> bool:
+    # Another heuristic: processed features typically have num__/cat__ prefixes
+    if any(k.startswith("num__") for k in payload.keys()):
+        return True
+    if any(k.startswith("cat__") for k in payload.keys()):
+        return True
+    return False
+
+def _payload_min_checkout(payload: Dict[str, Any]) -> Dict[str, Any]:
+    # thesis-safe subset for checkout-like payload
     return {
-        "transaction_id": payload.get("txn_id"),
+        "txn_id": payload.get("txn_id"),
         "timestamp": payload.get("timestamp"),
         "amount": payload.get("amount"),
         "country": payload.get("country"),
@@ -91,7 +105,80 @@ def _payload_min(payload: Dict[str, Any]) -> Dict[str, Any]:
         "velocity_24h": payload.get("velocity_24h"),
         "is_new_device": payload.get("is_new_device"),
         "is_proxy_vpn": payload.get("is_proxy_vpn"),
+        "_schema": "checkout_min",
     }
+
+def _payload_min_processed(payload: Dict[str, Any], top_v: int = 8, top_cat: int = 25) -> Dict[str, Any]:
+    """
+    For processed-102 payloads:
+    - keep key engineered numeric features (if present)
+    - keep top |V| numeric components (V1..V28 etc.)
+    - keep cat__ flags that are 1/True (limited)
+    """
+    out: Dict[str, Any] = {"_schema": "processed_102_min"}
+
+    # always include common, human-friendly engineered features if they exist
+    keep_num = [
+        "num__Amount",
+        "num__ip_reputation",
+        "num__txn_count_5m",
+        "num__txn_count_30m",
+        "num__txn_count_60m",
+        "num__geo_distance_km",
+        "num__account_age_days",
+        "num__token_age_days",
+        "num__amount_zscore",
+        "num__avg_amount_7d",
+        "num__avg_spend_user_30d",
+    ]
+    for k in keep_num:
+        if k in payload:
+            out[k] = payload.get(k)
+
+    # pick top |V| from any numeric keys that look like "num__V*"
+    v_vals: List[tuple[str, float]] = []
+    for k, v in payload.items():
+        if not isinstance(k, str) or not k.startswith("num__V"):
+            continue
+        try:
+            fv = float(v)
+        except Exception:
+            continue
+        v_vals.append((k, fv))
+
+    v_vals.sort(key=lambda kv: abs(kv[1]), reverse=True)
+    for k, fv in v_vals[: max(0, int(top_v))]:
+        out[k] = fv
+
+    # include cat__ flags that are active (1/True)
+    cats: List[str] = []
+    for k, v in payload.items():
+        if not isinstance(k, str) or not k.startswith("cat__"):
+            continue
+        # accept 1 / True / 1.0
+        is_on = False
+        if isinstance(v, bool) and v:
+            is_on = True
+        elif isinstance(v, (int, float)) and float(v) == 1.0:
+            is_on = True
+
+        if is_on:
+            cats.append(k)
+
+    cats = cats[: max(0, int(top_cat))]
+    if cats:
+        out["cat_flags_on"] = cats
+
+    return out
+
+def _payload_min(payload: Dict[str, Any]) -> Dict[str, Any]:
+    # If payload is processed-102, store processed snapshot.
+    # If payload is checkout-like, store checkout snapshot.
+    if _is_processed_102(payload) and not _is_checkout_payload(payload):
+        return _payload_min_processed(payload)
+    return _payload_min_checkout(payload)
+
+
 
 
 def log_decision(
