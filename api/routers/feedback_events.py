@@ -1,44 +1,33 @@
+# api/routers/feedback_events.py
 from __future__ import annotations
 
-import time
-import uuid
+from typing import Optional
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends
 
-from fastapi import APIRouter
-from api.core.config import get_settings
+from api.core.config import Settings, get_settings
 from api.core.errors import ApiError
-from api.services.store import init_db, insert_feedback_event, get_risk_assessment
-from api.schemas.feedback import FeedbackEventIn, FeedbackEventOut
+from api.services.store import get_review_by_id, insert_feedback_event
 
-router = APIRouter()
+router = APIRouter(tags=["feedback"])
 
 
-@router.post("/feedback_events", response_model=FeedbackEventOut)
-def create_feedback_event(payload: FeedbackEventIn):
-    settings = get_settings()
-    init_db(settings.abs_sqlite_path())
+class FeedbackIn(BaseModel):
+    review_id: str
+    outcome: str                  # "APPROVE" | "BLOCK"
+    notes: Optional[str] = None
 
-    ra = get_risk_assessment(settings.abs_sqlite_path(), payload.risk_assessment_id)
-    if not ra:
-        raise ApiError(404, "resource_missing", "Risk assessment not found.", param="risk_assessment_id")
 
-    now = int(time.time())
-    eid = f"fb_{uuid.uuid4().hex[:24]}"
+@router.post("/feedback/label")
+def feedback_label(body: FeedbackIn, settings: Settings = Depends(get_settings)):
+    review = get_review_by_id(settings.abs_sqlite_path(), body.review_id)
+    if not review:
+        raise ApiError(404, "resource_missing", "Review not found.", param="review_id")
 
-    insert_feedback_event(
+    ev = insert_feedback_event(
         settings.abs_sqlite_path(),
-        {
-            "id": eid,
-            "created": now,
-            "risk_assessment_id": payload.risk_assessment_id,
-            "outcome": payload.outcome,
-            "notes": payload.notes,
-        },
+        review_id=body.review_id,
+        outcome=body.outcome,
+        notes=body.notes,
     )
-
-    return FeedbackEventOut(
-        id=eid,
-        risk_assessment_id=payload.risk_assessment_id,
-        outcome=payload.outcome,
-        notes=payload.notes,
-        created=now,
-    )
+    return {"event": ev}

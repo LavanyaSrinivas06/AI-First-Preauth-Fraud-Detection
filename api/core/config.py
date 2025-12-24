@@ -20,10 +20,26 @@ class Settings(BaseSettings):
     ae_model_path: str = "autoencoder_model.keras"
     ae_thresholds_path: str = "ae_thresholds.json"
 
-    # Decision params
-    alpha: float = 0.7               # weight if you later fuse scores smoothly
-    xgb_t_low: float = 0.25
-    xgb_t_high: float = 0.75
+    # add under "Model artifact filenames"
+    ae_baseline_path: str = "ae_baseline_legit_errors.npy"
+
+    xgb_t_low: float = 0.05
+    xgb_t_high: float = 0.80
+
+    ae_review: float = 0.08
+    ae_block: float = 0.15
+
+
+    # Rule overrides (keep thesis simple + gives stable approve/review/block in demos)
+    rule_velocity_1h_review: int = 4
+    rule_velocity_1h_block: int = 10
+
+    rule_velocity_24h_review: int = 12
+    rule_velocity_24h_block: int = 30
+
+    rule_amount_block: float = 2000.0
+
+
 
     # Storage
     sqlite_path: str = "artifacts/inference_store.sqlite"
