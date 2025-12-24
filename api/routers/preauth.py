@@ -22,9 +22,19 @@ def reason_details(codes: List[str]) -> List[Dict[str, str]]:
     return [{"code": c, "message": REASON_TEXT.get(c, c)} for c in codes]
 
 
+#def preauth_decision(payload: Dict[str, Any], settings: Settings = Depends(get_settings)):
+    #p_xgb, ae_err, payload_hash, ae_pct, ae_bkt = predict_from_processed_102(settings, payload)
+    
 @router.post("/preauth/decision")
-def preauth_decision(payload: Dict[str, Any], settings: Settings = Depends(get_settings)):
-    p_xgb, ae_err, payload_hash, ae_pct, ae_bkt = predict_from_processed_102(settings, payload)
+def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_settings)):
+    meta = body.get("meta", {}) or {}
+    features = body.get("features", {}) or {}
+
+    p_xgb, ae_err, payload_hash, ae_pct, ae_bkt = predict_from_processed_102(
+        settings,
+        features,   # 🔒 model sees ONLY processed_102
+    )
+
 
     if p_xgb < settings.xgb_t_low:
         decision = "APPROVE"
@@ -49,7 +59,8 @@ def preauth_decision(payload: Dict[str, Any], settings: Settings = Depends(get_s
     review_id = save_review_if_needed(
         sqlite_path=settings.abs_sqlite_path(),
         decision=decision,
-        payload=payload,
+        payload=features,     # still used for payload_min
+        meta=meta,            # still used for logging
         p_xgb=p_xgb,
         ae_err=ae_err,
         payload_hash=payload_hash,
@@ -58,10 +69,12 @@ def preauth_decision(payload: Dict[str, Any], settings: Settings = Depends(get_s
         ae_bucket=ae_bkt,
     )
 
+
     log_decision(
         sqlite_path=settings.abs_sqlite_path(),
         decision=decision,
-        payload=payload,
+        payload=features,
+        meta=meta,
         p_xgb=p_xgb,
         ae_err=ae_err,
         payload_hash=payload_hash,

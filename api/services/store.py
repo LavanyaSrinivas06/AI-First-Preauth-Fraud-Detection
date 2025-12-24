@@ -7,6 +7,17 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+def _ensure_column(con: sqlite3.Connection, table: str, col: str, col_type: str) -> None:
+    """
+    Lightweight migration: add column if missing.
+    Safe for SQLite when running locally.
+    """
+    cur = con.cursor()
+    cur.execute(f"PRAGMA table_info({table});")
+    cols = {row[1] for row in cur.fetchall()}  # row[1] = name
+    if col not in cols:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type};")
+
 
 def init_db(sqlite_path: Path) -> None:
     sqlite_path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +66,9 @@ def init_db(sqlite_path: Path) -> None:
               ae_bucket TEXT,
               reason_codes TEXT,          -- JSON string
               payload_min TEXT            -- JSON string
+
+              txn_id TEXT,
+              timestamp TEXT
             )
             """
         )
@@ -71,6 +85,12 @@ def init_db(sqlite_path: Path) -> None:
             )
             """
         )
+
+            # ---- migrations (for existing DBs) ----
+        _ensure_column(con, "reviews", "txn_id", "TEXT")
+        _ensure_column(con, "reviews", "timestamp", "TEXT")
+        _ensure_column(con, "decisions", "txn_id", "TEXT")
+        _ensure_column(con, "decisions", "timestamp", "TEXT")
 
         con.commit()
     finally:
@@ -178,13 +198,11 @@ def _payload_min(payload: Dict[str, Any]) -> Dict[str, Any]:
         return _payload_min_processed(payload)
     return _payload_min_checkout(payload)
 
-
-
-
 def log_decision(
     sqlite_path: Path,
     decision: str,
     payload: Dict[str, Any],
+    meta: Dict[str, Any],
     p_xgb: Optional[float],
     ae_err: Optional[float],
     payload_hash: str,
@@ -207,9 +225,10 @@ def log_decision(
             INSERT INTO decisions (
               id, created, decision, payload_hash,
               score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
-              reason_codes, payload_min
+              reason_codes, payload_min,
+                txn_id, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 dec_id,
@@ -222,6 +241,9 @@ def log_decision(
                 ae_bucket,
                 json.dumps(reason_codes),
                 json.dumps(_payload_min(payload)),
+                meta.get("txn_id"),
+                meta.get("timestamp"),
+                
             ),
         )
         con.commit()
@@ -234,6 +256,7 @@ def save_review_if_needed(
     sqlite_path: Path,
     decision: str,
     payload: Dict[str, Any],
+    meta: Dict[str, Any],
     p_xgb: Optional[float],
     ae_err: Optional[float],
     payload_hash: str,
@@ -274,8 +297,8 @@ def save_review_if_needed(
             (
                 review_id,
                 now,
-                payload.get("txn_id"),
-                payload.get("timestamp"),
+                meta.get("txn_id"),
+                meta.get("timestamp"),
                 float(p_xgb) if p_xgb is not None else None,
                 float(ae_err) if ae_err is not None else None,
                 float(ae_percentile) if ae_percentile is not None else None,

@@ -1,0 +1,197 @@
+.
+├── api
+│   ├── __init__.py
+│   ├── core
+│   │   ├── config.py
+│   │   ├── errors.py
+│   │   └── logging.py
+│   ├── main.py
+│   ├── routers
+│   │   ├── feedback_events.py
+│   │   ├── feedback.py
+│   │   ├── health.py
+│   │   ├── preauth.py
+│   │   └── review.py
+│   ├── schemas
+│   │   ├── feedback.py
+│   │   └── review.py
+│   └── services
+│       ├── decision_engine.py
+│       ├── feature_adapter.py
+│       ├── model_service.py
+│       └── store.py
+├── artifacts
+│   ├── ae_baseline_legit_errors.npy
+│   ├── ae_metrics.json
+│   ├── ae_threshold.txt
+│   ├── ae_thresholds.json
+│   ├── autoencoder_model.h5
+│   ├── autoencoder_model.keras
+│   ├── base_dataset_summary.csv
+│   ├── eda
+│   │   └── leakage_audit_report.json
+│   ├── explainability
+│   │   ├── lime
+│   │   └── shap
+│   ├── features.json
+│   ├── feedback_log.jsonl
+│   ├── inference_store.sqlite
+│   ├── plots
+│   │   ├── ae_error_distribution.png
+│   │   ├── ae_loss_curve.png
+│   │   ├── model_comparison
+│   │   │   ├── confusion_matrices.png
+│   │   │   ├── pr_comparison.png
+│   │   │   └── roc_comparison.png
+│   │   ├── xgb_confusion_test.png
+│   │   ├── xgb_confusion_val.png
+│   │   ├── xgb_f1_vs_threshold_val.png
+│   │   ├── xgb_feature_importance.png
+│   │   ├── xgb_pr_test.png
+│   │   ├── xgb_pr_val.png
+│   │   ├── xgb_roc_test.png
+│   │   ├── xgb_roc_val.png
+│   │   └── xgb_score_distribution_val.png
+│   ├── preprocess.joblib
+│   ├── review_queue.jsonl
+│   ├── xgb_metrics.json
+│   └── xgb_model.pkl
+├── config
+│   └── settings.yaml
+├── dashboard
+│   ├── __init__.py
+│   ├── app.py
+│   ├── config.yaml
+│   ├── static
+│   │   ├── shap_example.png
+│   │   └── shap_txn_001.png
+│   ├── utils_api.py
+│   └── utils.py
+├── data
+│   ├── processed
+│   │   ├── enriched_sample.csv
+│   │   ├── enriched.csv
+│   │   ├── enriched.parquet
+│   │   ├── test_nosmote.csv
+│   │   ├── test_raw.csv
+│   │   ├── test.csv
+│   │   ├── train_nosmote.csv
+│   │   ├── train_raw.csv
+│   │   ├── train.csv
+│   │   ├── val_nosmote.csv
+│   │   ├── val_raw.csv
+│   │   └── val.csv
+│   ├── raw
+│   │   └── creditcard.csv
+│   └── review_log.parquet
+├── docs
+│   ├── api_usage.md
+│   ├── autoencoder_training_report.md
+│   ├── data_card.md
+│   ├── data_dictionary.md
+│   ├── data_validation_report.md
+│   ├── enrichment_report.md
+│   ├── explainability_report.md
+│   ├── model_comparison_report.md
+│   ├── preprocessing_summary.md
+│   └── schema_enriched.json
+├── LICENSE
+├── logs
+│   ├── inference.jsonl
+│   └── inference.log
+├── notebooks
+│   ├── 01_eda.ipynb
+│   ├── 02_leakage_audit.ipynb
+│   ├── 03_enrichment_simulation.ipynb
+│   ├── 04_train_xgboost.ipynb
+│   ├── 05_train_autoencode.ipynb
+│   ├── EDA_base_dataset.ipynb
+│   └── EDA_baseline.ipynb
+├── project_structure.txt
+├── pytest.ini
+├── README.md
+├── requirements.txt
+├── sample_request.json
+├── scripts
+│   ├── compare_models.py
+│   ├── download_data.py
+│   ├── enrich_synthetic.py
+│   ├── explainability_shap_lime.py
+│   ├── generate_processed_payloads.py
+│   ├── generate_synthetic_fraud_data.py
+│   ├── generate_test_payloads.py
+│   ├── inspect_model_schema.py
+│   ├── make_processed_payloads.py
+│   ├── plot_xgb_evaluation.py
+│   ├── recalibrate_ae_thresholds.py
+│   ├── run_payload_batch.py
+│   ├── run_preprocessing.py
+│   ├── smoke_test.py
+│   ├── test_autoencoder.py
+│   ├── test_xgboost.py
+│   ├── train_autoencoder.py
+│   ├── train_xgboost.py
+│   └── validate_data.py
+├── src
+│   ├── features
+│   ├── models
+│   ├── preprocess
+│   │   ├── __init__.py
+│   │   └── preprocess_pipeline.py
+│   └── utils
+│       ├── __init__.py
+│       └── data_loader.py
+├── tests
+│   ├── test_api.py
+│   └── test_smoke.py
+├── tmp_payloads
+│   ├── approve_1.json
+│   ├── approve_2.json
+│   ├── block_1.json
+│   ├── block_2.json
+│   ├── review_1.json
+│   ├── review_2.json
+│   ├── sample_fraud_1.json
+│   ├── sample_fraud_10.json
+│   ├── sample_fraud_11.json
+│   ├── sample_fraud_12.json
+│   ├── sample_fraud_13.json
+│   ├── sample_fraud_14.json
+│   ├── sample_fraud_15.json
+│   ├── sample_fraud_16.json
+│   ├── sample_fraud_17.json
+│   ├── sample_fraud_18.json
+│   ├── sample_fraud_19.json
+│   ├── sample_fraud_2.json
+│   ├── sample_fraud_20.json
+│   ├── sample_fraud_3.json
+│   ├── sample_fraud_4.json
+│   ├── sample_fraud_5.json
+│   ├── sample_fraud_6.json
+│   ├── sample_fraud_7.json
+│   ├── sample_fraud_8.json
+│   ├── sample_fraud_9.json
+│   ├── sample_legit_1.json
+│   ├── sample_legit_10.json
+│   ├── sample_legit_11.json
+│   ├── sample_legit_12.json
+│   ├── sample_legit_13.json
+│   ├── sample_legit_14.json
+│   ├── sample_legit_15.json
+│   ├── sample_legit_2.json
+│   ├── sample_legit_3.json
+│   ├── sample_legit_4.json
+│   ├── sample_legit_5.json
+│   ├── sample_legit_6.json
+│   ├── sample_legit_7.json
+│   ├── sample_legit_8.json
+│   └── sample_legit_9.json
+└── tmp_payloads_processed
+    ├── req_1.json
+    ├── req_2.json
+    ├── req_3.json
+    ├── req_4.json
+    ├── req_5.json
+    └── req_6.json
+
+31 directories, 164 files
