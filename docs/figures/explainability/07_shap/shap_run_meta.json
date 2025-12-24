@@ -1,0 +1,32 @@
+{
+  "model_path": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/artifacts/xgb_model.pkl",
+  "test_path": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/test.csv",
+  "global_sample_size": 2000,
+  "background_size": 500,
+  "local_examples": [
+    {
+      "row_index": 1763,
+      "y_true": 1,
+      "p_xgb": 0.9999697208404541
+    },
+    {
+      "row_index": 1664,
+      "y_true": 1,
+      "p_xgb": 0.9999592304229736
+    },
+    {
+      "row_index": 19840,
+      "y_true": 1,
+      "p_xgb": 0.9999184608459473
+    }
+  ],
+  "figures": {
+    "summary": "docs/figures/explainability/07_shap/shap_summary.png",
+    "bar": "docs/figures/explainability/07_shap/shap_bar.png",
+    "locals": [
+      "docs/figures/explainability/07_shap/shap_local_0.png",
+      "docs/figures/explainability/07_shap/shap_local_1.png",
+      "docs/figures/explainability/07_shap/shap_local_2.png"
+    ]
+  }
+}
