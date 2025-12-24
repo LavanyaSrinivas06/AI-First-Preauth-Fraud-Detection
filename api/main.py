@@ -1,29 +1,26 @@
 from fastapi import FastAPI
+
 from api.core.config import get_settings
-from api.core.logging import setup_logging, RequestIdMiddleware
 from api.core.errors import register_exception_handlers
+from api.core.logging import RequestIdMiddleware, setup_logging
 
 from api.routers.health import router as health_router
-from api.routers.risk_assessments import router as risk_router
-from api.routers.reviews import router as reviews_router
-from api.routers.feedback_events import router as feedback_router
+from api.routers.preauth import router as preauth_router
+from api.routers.review import router as review_router
+from api.routers.feedback import router as feedback_router
 
 settings = get_settings()
-logger = setup_logging(settings)
+_ = setup_logging(settings)
 
 app = FastAPI(
-    title="AI-First Preauth Fraud API",
+    title="AI-First Preauth Fraud Detection API",
     version="1.0.0",
 )
 
-# middleware
 app.add_middleware(RequestIdMiddleware)
-
-# exception handlers (Stripe-like errors)
 register_exception_handlers(app)
 
-# routers
-app.include_router(health_router, tags=["health"])
-app.include_router(risk_router, prefix="/v1", tags=["risk_assessments"])
-app.include_router(reviews_router, prefix="/v1", tags=["reviews"])
-app.include_router(feedback_router, prefix="/v1", tags=["feedback_events"])
+app.include_router(health_router)
+app.include_router(preauth_router)
+app.include_router(review_router)
+app.include_router(feedback_router)

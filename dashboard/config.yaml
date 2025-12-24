@@ -1,0 +1,14 @@
+app:
+  title: "FPN Review Dashboard"
+
+data_source:
+  mode: "api"              # api | local
+
+paths:
+  review_queue_jsonl: "artifacts/review_queue.jsonl"
+  review_log_parquet: "data/review_log.parquet"
+  static_dir: "dashboard/static"
+
+queue:
+  min_score_xgb: 0.0
+  max_rows: 200
