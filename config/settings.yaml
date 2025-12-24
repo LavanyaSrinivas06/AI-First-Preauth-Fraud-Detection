@@ -1,3 +1,4 @@
+# config/settings.yaml
 data:
   raw_path: "data/raw/fraud_dataset.csv"
   processed_path: "data/processed/cleaned_data.csv"

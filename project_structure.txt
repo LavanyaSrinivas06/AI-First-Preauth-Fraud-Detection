@@ -1,0 +1,290 @@
+artifacts/
+  artifacts/.gitkeep
+  artifacts/ae_baseline_legit_errors.npy
+  artifacts/ae_metrics.json
+  artifacts/ae_test_errors.npy
+  artifacts/ae_threshold.txt
+  artifacts/ae_thresholds.json
+  artifacts/ae_val_errors.npy
+  artifacts/autoencoder_model.keras
+  artifacts/base_dataset_summary.csv
+  artifacts/features.json
+  artifacts/feedback_log.jsonl
+  artifacts/inference_store.sqlite
+  artifacts/preprocess.joblib
+  artifacts/review_queue.jsonl
+  artifacts/xgb_metrics.json
+  artifacts/xgb_model.pkl
+artifacts/eda/
+  artifacts/eda/leakage_audit_report.json
+artifacts/explainability/
+archive/
+archive/artifacts_old_or_duplicates/
+  archive/artifacts_old_or_duplicates/autoencoder_model.h5
+archive/artifacts_old_or_duplicates/shap/
+  archive/artifacts_old_or_duplicates/shap/shap_bar.png
+  archive/artifacts_old_or_duplicates/shap/shap_index.json
+  archive/artifacts_old_or_duplicates/shap/shap_local_0.png
+  archive/artifacts_old_or_duplicates/shap/shap_local_1.png
+  archive/artifacts_old_or_duplicates/shap/shap_summary.png
+archive/artifacts_old_or_duplicates/plots/
+  archive/artifacts_old_or_duplicates/plots/ae_error_distribution.png
+  archive/artifacts_old_or_duplicates/plots/ae_loss_curve.png
+  archive/artifacts_old_or_duplicates/plots/xgb_confusion_test.png
+  archive/artifacts_old_or_duplicates/plots/xgb_confusion_val.png
+  archive/artifacts_old_or_duplicates/plots/xgb_f1_vs_threshold_val.png
+  archive/artifacts_old_or_duplicates/plots/xgb_feature_importance.png
+  archive/artifacts_old_or_duplicates/plots/xgb_pr_test.png
+  archive/artifacts_old_or_duplicates/plots/xgb_pr_val.png
+  archive/artifacts_old_or_duplicates/plots/xgb_roc_test.png
+  archive/artifacts_old_or_duplicates/plots/xgb_roc_val.png
+  archive/artifacts_old_or_duplicates/plots/xgb_score_distribution_val.png
+archive/artifacts_old_or_duplicates/plots/model_comparison/
+  archive/artifacts_old_or_duplicates/plots/model_comparison/confusion_matrices.png
+  archive/artifacts_old_or_duplicates/plots/model_comparison/pr_comparison.png
+  archive/artifacts_old_or_duplicates/plots/model_comparison/roc_comparison.png
+archive/tmp_payloads/
+archive/scripts_old/
+  archive/scripts_old/plot_xgb_evaluation.py
+archive/notebooks_exploration/
+  archive/notebooks_exploration/01_eda.ipynb
+  archive/notebooks_exploration/02_leakage_audit.ipynb
+  archive/notebooks_exploration/03_enrichment_simulation.ipynb
+  archive/notebooks_exploration/04_train_xgboost.ipynb
+  archive/notebooks_exploration/05_train_autoencode.ipynb
+  archive/notebooks_exploration/EDA_base_dataset.ipynb
+  archive/notebooks_exploration/EDA_baseline.ipynb
+config/
+  config/settings.yaml
+payloads/
+payloads/review/
+payloads/incoming/
+  payloads/incoming/payload_0000.json
+  payloads/incoming/payload_0001.json
+  payloads/incoming/payload_0002.json
+  payloads/incoming/payload_0003.json
+  payloads/incoming/payload_0004.json
+  payloads/incoming/payload_0005.json
+  payloads/incoming/payload_0006.json
+  payloads/incoming/payload_0007.json
+  payloads/incoming/payload_0008.json
+  payloads/incoming/payload_0009.json
+  payloads/incoming/payload_0010.json
+  payloads/incoming/payload_0011.json
+  payloads/incoming/payload_0012.json
+  payloads/incoming/payload_0013.json
+  payloads/incoming/payload_0014.json
+  payloads/incoming/payload_0015.json
+  payloads/incoming/payload_0016.json
+  payloads/incoming/payload_0017.json
+  payloads/incoming/payload_0018.json
+  payloads/incoming/payload_0019.json
+  payloads/incoming/payload_0020.json
+  payloads/incoming/payload_0021.json
+  payloads/incoming/payload_0022.json
+  payloads/incoming/payload_0023.json
+  payloads/incoming/payload_0024.json
+  payloads/incoming/payload_0025.json
+  payloads/incoming/payload_0026.json
+  payloads/incoming/payload_0027.json
+  payloads/incoming/payload_0028.json
+  payloads/incoming/payload_0029.json
+  payloads/incoming/payload_0030.json
+  payloads/incoming/payload_0031.json
+  payloads/incoming/payload_0032.json
+  payloads/incoming/payload_0033.json
+  payloads/incoming/payload_0034.json
+  payloads/incoming/payload_0035.json
+  payloads/incoming/payload_0036.json
+  payloads/incoming/payload_0037.json
+  payloads/incoming/payload_0038.json
+  payloads/incoming/payload_0039.json
+  payloads/incoming/payload_0040.json
+  payloads/incoming/payload_0041.json
+  payloads/incoming/payload_0042.json
+  payloads/incoming/payload_0043.json
+  payloads/incoming/payload_0044.json
+  payloads/incoming/payload_0045.json
+  payloads/incoming/payload_0046.json
+  payloads/incoming/payload_0047.json
+  payloads/incoming/payload_0048.json
+  payloads/incoming/payload_0049.json
+tests/
+  tests/test_api.py
+  tests/test_smoke.py
+docs/
+  docs/api_usage.md
+  docs/autoencoder_training_report.md
+  docs/data_card.md
+  docs/data_dictionary.md
+  docs/data_validation_report.md
+  docs/enrichment_report.md
+  docs/explainability_report.md
+  docs/model_comparison_report.md
+  docs/preprocessing_summary.md
+  docs/schema_enriched.json
+docs/figures/
+docs/figures/models/
+docs/figures/models/06_model_comparison/
+  docs/figures/models/06_model_comparison/cm_ae_test.png
+  docs/figures/models/06_model_comparison/cm_ae_val.png
+  docs/figures/models/06_model_comparison/cm_xgb_test.png
+  docs/figures/models/06_model_comparison/cm_xgb_val.png
+  docs/figures/models/06_model_comparison/model_comparison_summary.json
+  docs/figures/models/06_model_comparison/pr_test.png
+  docs/figures/models/06_model_comparison/pr_val.png
+  docs/figures/models/06_model_comparison/roc_test.png
+  docs/figures/models/06_model_comparison/roc_val.png
+docs/figures/models/04_xgboost/
+  docs/figures/models/04_xgboost/xgb_confusion_test.png
+  docs/figures/models/04_xgboost/xgb_confusion_val.png
+  docs/figures/models/04_xgboost/xgb_f2_vs_threshold_val.png
+  docs/figures/models/04_xgboost/xgb_pr_test.png
+  docs/figures/models/04_xgboost/xgb_pr_val.png
+  docs/figures/models/04_xgboost/xgb_roc_test.png
+  docs/figures/models/04_xgboost/xgb_roc_val.png
+docs/figures/models/05_autoencoder/
+  docs/figures/models/05_autoencoder/ae_error_dist_test.png
+  docs/figures/models/05_autoencoder/ae_error_dist_val.png
+  docs/figures/models/05_autoencoder/ae_eval_summary.json
+  docs/figures/models/05_autoencoder/ae_pr_test.png
+  docs/figures/models/05_autoencoder/ae_pr_val.png
+  docs/figures/models/05_autoencoder/ae_roc_test.png
+  docs/figures/models/05_autoencoder/ae_roc_val.png
+docs/figures/explainability/
+docs/figures/explainability/07_shap/
+  docs/figures/explainability/07_shap/shap_bar.png
+  docs/figures/explainability/07_shap/shap_local_0.png
+  docs/figures/explainability/07_shap/shap_local_1.png
+  docs/figures/explainability/07_shap/shap_local_2.png
+  docs/figures/explainability/07_shap/shap_run_meta.json
+  docs/figures/explainability/07_shap/shap_summary.png
+docs/figures/system/
+docs/figures/data/
+docs/figures/data/02_enrichment_simulation/
+  docs/figures/data/02_enrichment_simulation/enriched_amount_hist.png
+  docs/figures/data/02_enrichment_simulation/enrichment_simulation_notes.md
+  docs/figures/data/02_enrichment_simulation/rate_country_mismatch_by_class.png
+  docs/figures/data/02_enrichment_simulation/rate_is_new_device_by_class.png
+  docs/figures/data/02_enrichment_simulation/rate_is_proxy_vpn_by_class.png
+  docs/figures/data/02_enrichment_simulation/rate_night_txn_by_class.png
+  docs/figures/data/02_enrichment_simulation/rate_weekend_txn_by_class.png
+  docs/figures/data/02_enrichment_simulation/raw_amount_hist.png
+  docs/figures/data/02_enrichment_simulation/txn_count_30m_fraud_hist.png
+  docs/figures/data/02_enrichment_simulation/txn_count_30m_legit_hist.png
+  docs/figures/data/02_enrichment_simulation/txn_count_5m_fraud_hist.png
+  docs/figures/data/02_enrichment_simulation/txn_count_5m_legit_hist.png
+  docs/figures/data/02_enrichment_simulation/txn_count_60m_fraud_hist.png
+  docs/figures/data/02_enrichment_simulation/txn_count_60m_legit_hist.png
+docs/figures/data/03_feature_engineering_summary/
+  docs/figures/data/03_feature_engineering_summary/compare_legit_fraud_account_age_days.png
+  docs/figures/data/03_feature_engineering_summary/compare_legit_fraud_amount_zscore.png
+  docs/figures/data/03_feature_engineering_summary/compare_legit_fraud_geo_distance_km.png
+  docs/figures/data/03_feature_engineering_summary/compare_legit_fraud_ip_reputation.png
+  docs/figures/data/03_feature_engineering_summary/compare_legit_fraud_txn_count_5m.png
+  docs/figures/data/03_feature_engineering_summary/dist_Amount.png
+  docs/figures/data/03_feature_engineering_summary/dist_account_age_days.png
+  docs/figures/data/03_feature_engineering_summary/dist_amount_zscore.png
+  docs/figures/data/03_feature_engineering_summary/dist_geo_distance_km.png
+  docs/figures/data/03_feature_engineering_summary/dist_ip_reputation.png
+  docs/figures/data/03_feature_engineering_summary/dist_txn_count_5m.png
+  docs/figures/data/03_feature_engineering_summary/top_corr_processed.png
+docs/figures/data/00_data_overview/
+  docs/figures/data/00_data_overview/class_distribution.png
+  docs/figures/data/00_data_overview/corr_heatmap_first30.png
+  docs/figures/data/00_data_overview/dist_Amount.png
+  docs/figures/data/00_data_overview/dist_Amount_log1p.png
+  docs/figures/data/00_data_overview/dist_Time.png
+docs/figures/data/01_preprocessing_pipeline/
+  docs/figures/data/01_preprocessing_pipeline/split_sizes.png
+  docs/figures/data/01_preprocessing_pipeline/train_class_distribution_smote.png
+dashboard/
+  dashboard/__init__.py
+  dashboard/app.py
+  dashboard/config.yaml
+  dashboard/utils.py
+  dashboard/utils_api.py
+dashboard/static/
+  dashboard/static/shap_example.png
+  dashboard/static/shap_txn_001.png
+logs/
+  logs/inference.jsonl
+  logs/inference.log
+scripts/
+  scripts/compare_models.py
+  scripts/download_data.py
+  scripts/enrich_synthetic.py
+  scripts/explainability_shap.py
+  scripts/generate_incoming_payloads.py
+  scripts/generate_synthetic_fraud_data.py
+  scripts/inspect_model_schema.py
+  scripts/recalibrate_ae_thresholds.py
+  scripts/run_preprocessing.py
+  scripts/test_autoencoder.py
+  scripts/test_xgboost.py
+  scripts/train_autoencoder.py
+  scripts/train_xgboost.py
+  scripts/validate_data.py
+.github/
+.github/workflows/
+  .github/workflows/tests.yml.disabled
+api/
+  api/__init__.py
+  api/main.py
+api/routers/
+  api/routers/feedback.py
+  api/routers/feedback_events.py
+  api/routers/health.py
+  api/routers/preauth.py
+  api/routers/review.py
+api/core/
+  api/core/config.py
+  api/core/errors.py
+  api/core/logging.py
+api/schemas/
+  api/schemas/feedback.py
+  api/schemas/review.py
+api/services/
+  api/services/decision_engine.py
+  api/services/feature_adapter.py
+  api/services/model_service.py
+  api/services/store.py
+data/
+  data/.gitkeep
+  data/review_log.parquet
+data/processed/
+  data/processed/enriched.csv
+  data/processed/enriched.parquet
+  data/processed/enriched_sample.csv
+  data/processed/test.csv
+  data/processed/test_nosmote.csv
+  data/processed/test_raw.csv
+  data/processed/train.csv
+  data/processed/train_nosmote.csv
+  data/processed/train_raw.csv
+  data/processed/val.csv
+  data/processed/val_nosmote.csv
+  data/processed/val_raw.csv
+data/raw/
+  data/raw/creditcard.csv
+notebooks/
+notebooks/00_thesis_story/
+  notebooks/00_thesis_story/00_data_overview.ipynb
+  notebooks/00_thesis_story/01_preprocessing_pipeline.ipynb
+  notebooks/00_thesis_story/02_enrichment_simulation.ipynb
+  notebooks/00_thesis_story/03_feature_engineering_summary.ipynb
+  notebooks/00_thesis_story/04_xgboost_training_and_eval.ipynb
+  notebooks/00_thesis_story/05_autoencoder_training_and_eval.ipynb
+  notebooks/00_thesis_story/06_model_comparison.ipynb
+  notebooks/00_thesis_story/07_explainability_shap.ipynb
+notebooks/00_thesis_story/docs/
+notebooks/99_sandbox/
+src/
+src/features/
+src/preprocess/
+  src/preprocess/__init__.py
+  src/preprocess/preprocess_pipeline.py
+src/utils/
+  src/utils/__init__.py
+  src/utils/data_loader.py
+src/models/
