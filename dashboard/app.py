@@ -1,7 +1,7 @@
 # dashboard/app.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -9,12 +9,12 @@ import pandas as pd
 import streamlit as st
 import yaml
 
-# ✅ API helpers (you should have these in dashboard/utils_api.py)
-# - api_get_review_queue() -> List[Dict]
-# - api_get_review(review_id: str) -> Dict
-# - api_close_review(review_id: str, analyst: str, decision: str, notes: str|None) -> Dict
-from utils_api import api_get_review_queue, api_get_review, api_close_review
-
+from utils_api import (
+    api_get_review_queue,
+    api_get_review,
+    api_close_review,
+    api_get_feedback_export,  # closed tickets export
+)
 
 from utils import (
     find_shap_png,
@@ -56,7 +56,10 @@ def sidebar(cfg: Dict[str, Any]) -> Tuple[str, float, int]:
 
 def set_selected_review(review_id: str):
     st.session_state["selected_review_id"] = review_id
-    st.session_state["page"] = "Details"
+
+
+def clear_selected_review():
+    st.session_state.pop("selected_review_id", None)
 
 
 def get_selected_review() -> Optional[str]:
@@ -78,68 +81,28 @@ def load_queue_from_api(min_score: float, max_rows: int) -> pd.DataFrame:
     return df
 
 
-def page_queue(cfg: Dict[str, Any], mode: str, min_score: float, max_rows: int):
-    st.subheader("Review Queue")
+def _fmt_dt(v: Any) -> str:
+    if v is None or v == "":
+        return "—"
+    return str(v)
+
+
+def _fmt_reason_codes(rc: Any) -> str:
+    if isinstance(rc, list) and rc:
+        return ", ".join(map(str, rc[:6]))
+    if isinstance(rc, str) and rc.strip():
+        return rc
+    return "—"
+
+
+def render_details(cfg: Dict[str, Any], mode: str, review_id: str):
+    st.markdown("---")
+    st.subheader(f"Details: {review_id}")
 
     if mode != "api":
         st.info("Local mode not enabled in this version. Switch Data source mode to API.")
         return
 
-    df = load_queue_from_api(min_score=min_score, max_rows=max_rows)
-    if df.empty:
-        st.info("No REVIEW events in the queue yet. Trigger /preauth/decision that returns REVIEW.")
-        return
-
-    cols = [c for c in ["id", "created", "txn_id", "timestamp", "score_xgb", "ae_error", "ae_bucket", "ae_percentile_vs_legit", "reason_codes"] if c in df.columns]
-    df_view = df[cols].copy()
-
-    st.caption("Click a review_id to open Details.")
-    for i, row in df_view.iterrows():
-        review_id = str(row.get("id", ""))
-        k = f"open_{review_id}_{i}"  # unique key
-
-        c1, c2, c3, c4, c5 = st.columns([2.2, 2.4, 1.2, 1.2, 4.0])
-
-        with c1:
-            if st.button(review_id, key=k):
-                set_selected_review(review_id)
-
-        with c2:
-            st.write(str(row.get("timestamp", "")))
-
-        with c3:
-            st.write(row.get("score_xgb", ""))
-
-        with c4:
-            # show readable AE if present
-            bkt = row.get("ae_bucket", "")
-            pct = row.get("ae_percentile_vs_legit", "")
-            ae_txt = "—"
-            if pd.notna(pct) and pct != "":
-                ae_txt = f"{bkt} ({float(pct):.2f}pctl)"
-            st.write(ae_txt)
-
-        with c5:
-            rc = row.get("reason_codes", [])
-            if isinstance(rc, list) and rc:
-                st.write(", ".join(map(str, rc[:6])))
-            else:
-                st.write("—")
-
-
-def page_details(cfg: Dict[str, Any], mode: str, min_score: float, max_rows: int):
-    st.subheader("Review Details")
-
-    review_id = get_selected_review()
-    if not review_id:
-        st.info("Pick a review from Queue first.")
-        return
-
-    if mode != "api":
-        st.info("Local mode not enabled in this version. Switch Data source mode to API.")
-        return
-
-    # ✅ fetch detail from API (source of truth)
     try:
         review = api_get_review(review_id)
     except Exception as e:
@@ -150,7 +113,7 @@ def page_details(cfg: Dict[str, Any], mode: str, min_score: float, max_rows: int
         st.warning("Review not found.")
         return
 
-    # Why flagged
+    # Why
     st.markdown("### Why it was sent to REVIEW")
     rc = review.get("reason_codes", [])
     if isinstance(rc, list) and rc:
@@ -167,19 +130,15 @@ def page_details(cfg: Dict[str, Any], mode: str, min_score: float, max_rows: int
     pct = review.get("ae_percentile_vs_legit", None)
     c3.metric("AE percentile vs legit", (f"{float(pct):.2f}" if pct is not None else "—"))
 
-    # Payload snapshot (thesis-safe)
-   # Payload snapshot
+    # Payload snapshot
     with st.expander("Payload snapshot (stored subset)", expanded=False):
-        # DB/API returns payload_min as dict (your top features / minimal payload)
         pm = review.get("payload_min", None)
-
         if isinstance(pm, dict) and pm:
             st.json(pm)
         else:
-            # fallback if payload_min wasn't present
             st.info("No payload_min found for this review.")
 
-    # SHAP image by review_id
+    # SHAP
     st.markdown("### SHAP explanation")
     static_dir = cfg_get(cfg, "paths", "static_dir", default="dashboard/static")
     shap_png = find_shap_png(static_dir, str(review_id))
@@ -187,13 +146,13 @@ def page_details(cfg: Dict[str, Any], mode: str, min_score: float, max_rows: int
 
     if shap_png:
         st.image(shap_png, caption=f"SHAP for review_id={review_id}", use_container_width=True)
-    elif fallback:
-        st.image(fallback, caption="SHAP example (no per-review SHAP found)", use_container_width=True)
-        st.info(f"To show per-review SHAP, save: dashboard/static/shap_{review_id}.png")
     else:
-        st.info(f"No SHAP found. Save per-review image at: dashboard/static/shap_{review_id}.png")
+        st.warning("Per-review SHAP not found. You are seeing a fallback placeholder.")
+        if fallback:
+            st.image(fallback, caption="Fallback SHAP example", use_container_width=True)
+        st.info(f"Expected file: dashboard/static/shap_{review_id}.png")
 
-    # ✅ Analyst action -> close review via API (no parquet/local logs)
+    # Close review
     st.markdown("### Analyst decision (closes ticket)")
     analyst = st.text_input("Analyst", value=st.session_state.get("analyst", "analyst@fpn"))
     st.session_state["analyst"] = analyst
@@ -204,28 +163,154 @@ def page_details(cfg: Dict[str, Any], mode: str, min_score: float, max_rows: int
             api_close_review(
                 review_id=review_id,
                 analyst=analyst,
-                decision=decision,  # "APPROVE" or "BLOCK"
+                decision=decision,
                 notes=notes,
             )
             st.success(f"Review {review_id} closed as {decision}.")
-            st.session_state["page"] = "Queue"
-            # refresh cached queue
+            clear_selected_review()
             st.cache_data.clear()
         except Exception as e:
             st.error(f"Failed to close review: {type(e).__name__}: {e}")
 
-    b1, b2 = st.columns(2)
+    b1, b2, b3 = st.columns([1, 1, 1])
     with b1:
         if st.button("Approve", use_container_width=True):
             submit_decision("APPROVE")
     with b2:
         if st.button("Block", use_container_width=True):
             submit_decision("BLOCK")
+    with b3:
+        if st.button("Back", use_container_width=True):
+            clear_selected_review()
 
 
-def page_metrics(cfg: Dict[str, Any]):
-    st.subheader("Metrics")
-    st.info("Metrics page will be added after close-review flow is stable (DB-driven).")
+def page_queue(cfg: Dict[str, Any], mode: str, min_score: float, max_rows: int):
+    st.subheader("Review Queue (Open)")
+
+    if mode != "api":
+        st.info("Local mode not enabled in this version. Switch Data source mode to API.")
+        return
+
+    df = load_queue_from_api(min_score=min_score, max_rows=max_rows)
+    if df.empty:
+        st.info("No REVIEW events in the queue yet. Trigger /preauth/decision that returns REVIEW.")
+        return
+
+    if "timestamp" not in df.columns:
+        df["timestamp"] = None
+    if "reason_codes" not in df.columns:
+        df["reason_codes"] = None
+
+    st.caption("Shows open REVIEW tickets. Click View to see details inline (no sidebar Details page).")
+
+    h1, h2, h3, h4 = st.columns([2.2, 2.6, 4.8, 1.2])
+    with h1:
+        st.markdown("**Review ID**")
+    with h2:
+        st.markdown("**Time**")
+    with h3:
+        st.markdown("**Why review**")
+    with h4:
+        st.markdown("**Action**")
+
+    st.divider()
+
+    for i, row in df.iterrows():
+        review_id = str(row.get("id", ""))
+        ts = _fmt_dt(row.get("timestamp", None))
+        why = _fmt_reason_codes(row.get("reason_codes", None))
+
+        c1, c2, c3, c4 = st.columns([2.2, 2.6, 4.8, 1.2])
+        with c1:
+            st.write(review_id)
+        with c2:
+            st.write(ts)
+        with c3:
+            st.write(why)
+        with c4:
+            if st.button("View", key=f"view_{review_id}_{i}", use_container_width=True):
+                set_selected_review(review_id)
+
+    sel = get_selected_review()
+    if sel:
+        render_details(cfg, mode=mode, review_id=sel)
+
+
+def page_log(cfg: Dict[str, Any], mode: str):
+    st.subheader("Closed Tickets Log (APPROVE / BLOCK)")
+
+    if mode != "api":
+        st.info("Local mode not enabled in this version. Switch Data source mode to API.")
+        return
+
+    top = st.columns([1.2, 1.6, 2.8, 1.0])
+    with top[0]:
+        limit = st.number_input("How many to show", min_value=10, max_value=5000, value=500, step=50)
+    with top[1]:
+        only = st.selectbox("Filter", ["ALL", "APPROVE", "BLOCK"], index=0)
+    with top[2]:
+        q = st.text_input("Search (review_id / analyst / notes)", value="")
+    with top[3]:
+        if st.button("Refresh", use_container_width=True):
+            st.cache_data.clear()
+
+    try:
+        data = api_get_feedback_export(limit=int(limit))  # {items:[...], count:N}
+        items = data.get("items", []) if isinstance(data, dict) else []
+    except Exception as e:
+        st.error(f"Failed to fetch closed log: {type(e).__name__}: {e}")
+        return
+
+    if not items:
+        st.info("No closed tickets yet.")
+        return
+
+    df = pd.DataFrame(items)
+
+    if "id" in df.columns and "review_id" not in df.columns:
+        df["review_id"] = df["id"]
+
+    if "updated" in df.columns:
+        def to_dt(v):
+            try:
+                if pd.isna(v):
+                    return None
+                return datetime.fromtimestamp(int(v), tz=timezone.utc).isoformat()
+            except Exception:
+                return str(v)
+        df["updated_dt"] = df["updated"].apply(to_dt)
+    else:
+        df["updated_dt"] = None
+
+    if only in {"APPROVE", "BLOCK"} and "analyst_decision" in df.columns:
+        df = df[df["analyst_decision"] == only]
+
+    if q.strip():
+        qq = q.strip().lower()
+        def row_match(r):
+            for col in ["review_id", "analyst", "notes", "payload_hash"]:
+                if col in r and pd.notna(r[col]) and qq in str(r[col]).lower():
+                    return True
+            return False
+        df = df[df.apply(lambda r: row_match(r.to_dict()), axis=1)]
+
+    show_cols = [c for c in [
+        "review_id",
+        "updated_dt",
+        "analyst_decision",
+        "analyst",
+        "notes",
+        "score_xgb",
+        "ae_bucket",
+        "ae_percentile_vs_legit",
+        "reason_codes",
+    ] if c in df.columns]
+
+    df_view = df[show_cols].copy()
+    if "reason_codes" in df_view.columns:
+        df_view["reason_codes"] = df_view["reason_codes"].apply(_fmt_reason_codes)
+
+    st.dataframe(df_view, use_container_width=True, hide_index=True)
 
 
 def main():
@@ -236,19 +321,11 @@ def main():
 
     mode, min_score, max_rows = sidebar(cfg)
 
-    page = st.sidebar.radio(
-        "Pages",
-        ["Queue", "Details", "Metrics"],
-        index=["Queue", "Details", "Metrics"].index(st.session_state.get("page", "Queue")),
-    )
-    st.session_state["page"] = page
-
+    page = st.sidebar.radio("Pages", ["Queue", "Log"], index=0)
     if page == "Queue":
         page_queue(cfg, mode=mode, min_score=min_score, max_rows=max_rows)
-    elif page == "Details":
-        page_details(cfg, mode=mode, min_score=min_score, max_rows=max_rows)
     else:
-        page_metrics(cfg)
+        page_log(cfg, mode=mode)
 
 
 if __name__ == "__main__":
