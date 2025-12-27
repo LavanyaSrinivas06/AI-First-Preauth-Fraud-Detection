@@ -7,14 +7,33 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+
+# -------------------------
+# Feature snapshot (for real per-ticket SHAP)
+# -------------------------
+def save_feature_snapshot(artifacts_dir: Path, review_id: str, features: Dict[str, Any]) -> str:
+    """
+    Persist the exact processed-102 features used for scoring.
+    Returns a relative path string to store in DB (portable).
+    """
+    snap_dir = artifacts_dir / "feature_snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+
+    snap_path = snap_dir / f"{review_id}.json"
+    snap_path.write_text(json.dumps(features, ensure_ascii=False), encoding="utf-8")
+
+    # store relative path (from repo root perspective)
+    return str(snap_path.as_posix())
+
+
+# -------------------------
+# DB initialization + migration
+# -------------------------
 def _ensure_column(con: sqlite3.Connection, table: str, col: str, col_type: str) -> None:
-    """
-    Lightweight migration: add column if missing.
-    Safe for SQLite when running locally.
-    """
+    """Lightweight migration: add column if missing (SQLite-safe for local use)."""
     cur = con.cursor()
     cur.execute(f"PRAGMA table_info({table});")
-    cols = {row[1] for row in cur.fetchall()}  # row[1] = name
+    cols = {row[1] for row in cur.fetchall()}
     if col not in cols:
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type};")
 
@@ -42,6 +61,7 @@ def init_db(sqlite_path: Path) -> None:
               payload_hash TEXT,
               reason_codes TEXT,          -- JSON string
               payload_min TEXT,           -- JSON string
+              feature_path TEXT,          -- optional: path to saved feature snapshot (.json)
 
               status TEXT DEFAULT 'open', -- open | closed
               analyst_decision TEXT,      -- APPROVE | BLOCK
@@ -52,7 +72,7 @@ def init_db(sqlite_path: Path) -> None:
             """
         )
 
-        # Decision log table (stores APPROVE/REVIEW/BLOCK for audit + thesis)
+        # Decision log table (audit)
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS decisions (
@@ -65,15 +85,15 @@ def init_db(sqlite_path: Path) -> None:
               ae_percentile_vs_legit REAL,
               ae_bucket TEXT,
               reason_codes TEXT,          -- JSON string
-              payload_min TEXT            -- JSON string
-
+              payload_min TEXT,           -- JSON string
+              feature_path TEXT,          -- optional: path to saved feature snapshot (.json)
               txn_id TEXT,
               timestamp TEXT
             )
             """
         )
 
-        # Feedback events (future loop)
+        # Feedback events
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS feedback_events (
@@ -86,35 +106,63 @@ def init_db(sqlite_path: Path) -> None:
             """
         )
 
-            # ---- migrations (for existing DBs) ----
+        # ---- migrations (for older DBs) ----
         _ensure_column(con, "reviews", "txn_id", "TEXT")
         _ensure_column(con, "reviews", "timestamp", "TEXT")
+        _ensure_column(con, "reviews", "feature_path", "TEXT")
         _ensure_column(con, "decisions", "txn_id", "TEXT")
         _ensure_column(con, "decisions", "timestamp", "TEXT")
+        _ensure_column(con, "decisions", "feature_path", "TEXT")
 
         con.commit()
     finally:
         con.close()
 
+
+# -------------------------
+# Payload snapshot helpers
+# -------------------------
+def _get_txn_id(payload: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    meta = meta or {}
+    return (
+        meta.get("txn_id")
+        or meta.get("transaction_id")
+        or payload.get("txn_id")
+        or payload.get("transaction_id")
+        or payload.get("id")
+    )
+
+
+def _get_timestamp(payload: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    meta = meta or {}
+    return (
+        meta.get("timestamp")
+        or payload.get("timestamp")
+        or payload.get("created_at")
+        or payload.get("created")
+        or payload.get("time")
+    )
+
+
 def _is_checkout_payload(payload: Dict[str, Any]) -> bool:
-    # A lightweight heuristic: if these exist, it's checkout-like
     keys = {"amount", "country", "ip_country", "currency", "card_currency"}
     return any(k in payload for k in keys)
 
 
 def _is_processed_102(payload: Dict[str, Any]) -> bool:
-    # Another heuristic: processed features typically have num__/cat__ prefixes
-    if any(k.startswith("num__") for k in payload.keys()):
-        return True
-    if any(k.startswith("cat__") for k in payload.keys()):
-        return True
-    return False
+    return any(isinstance(k, str) and (k.startswith("num__") or k.startswith("cat__")) 
+               for k in payload.keys())
 
-def _payload_min_checkout(payload: Dict[str, Any]) -> Dict[str, Any]:
-    # thesis-safe subset for checkout-like payload
+
+def _payload_min_checkout(payload: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    txn_id = _get_txn_id(payload, meta)
+    ts = _get_timestamp(payload, meta)
+
     return {
-        "txn_id": payload.get("txn_id"),
-        "timestamp": payload.get("timestamp"),
+        "txn_id": txn_id,
+        "transaction_id": txn_id,  # alias for UI consistency
+        "timestamp": ts,
+        "created_at": ts,          # alias
         "amount": payload.get("amount"),
         "country": payload.get("country"),
         "ip_country": payload.get("ip_country"),
@@ -128,16 +176,24 @@ def _payload_min_checkout(payload: Dict[str, Any]) -> Dict[str, Any]:
         "_schema": "checkout_min",
     }
 
-def _payload_min_processed(payload: Dict[str, Any], top_v: int = 8, top_cat: int = 25) -> Dict[str, Any]:
-    """
-    For processed-102 payloads:
-    - keep key engineered numeric features (if present)
-    - keep top |V| numeric components (V1..V28 etc.)
-    - keep cat__ flags that are 1/True (limited)
-    """
-    out: Dict[str, Any] = {"_schema": "processed_102_min"}
 
-    # always include common, human-friendly engineered features if they exist
+def _payload_min_processed(
+    payload: Dict[str, Any],
+    meta: Optional[Dict[str, Any]] = None,
+    top_v: int = 8,
+    top_cat: int = 25,
+) -> Dict[str, Any]:
+    txn_id = _get_txn_id(payload, meta)
+    ts = _get_timestamp(payload, meta)
+
+    out: Dict[str, Any] = {
+        "_schema": "processed_102_min_v1",
+        "txn_id": txn_id,
+        "transaction_id": txn_id,
+        "timestamp": ts,
+        "created_at": ts,
+    }
+
     keep_num = [
         "num__Amount",
         "num__ip_reputation",
@@ -155,7 +211,7 @@ def _payload_min_processed(payload: Dict[str, Any], top_v: int = 8, top_cat: int
         if k in payload:
             out[k] = payload.get(k)
 
-    # pick top |V| from any numeric keys that look like "num__V*"
+    # top |V| components
     v_vals: List[tuple[str, float]] = []
     for k, v in payload.items():
         if not isinstance(k, str) or not k.startswith("num__V"):
@@ -170,12 +226,12 @@ def _payload_min_processed(payload: Dict[str, Any], top_v: int = 8, top_cat: int
     for k, fv in v_vals[: max(0, int(top_v))]:
         out[k] = fv
 
-    # include cat__ flags that are active (1/True)
+    # cat flags on
     cats: List[str] = []
     for k, v in payload.items():
         if not isinstance(k, str) or not k.startswith("cat__"):
             continue
-        # accept 1 / True / 1.0
+
         is_on = False
         if isinstance(v, bool) and v:
             is_on = True
@@ -191,13 +247,16 @@ def _payload_min_processed(payload: Dict[str, Any], top_v: int = 8, top_cat: int
 
     return out
 
-def _payload_min(payload: Dict[str, Any]) -> Dict[str, Any]:
-    # If payload is processed-102, store processed snapshot.
-    # If payload is checkout-like, store checkout snapshot.
-    if _is_processed_102(payload) and not _is_checkout_payload(payload):
-        return _payload_min_processed(payload)
-    return _payload_min_checkout(payload)
 
+def _payload_min(payload: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if _is_processed_102(payload) and not _is_checkout_payload(payload):
+        return _payload_min_processed(payload, meta=meta)
+    return _payload_min_checkout(payload, meta=meta)
+
+
+# -------------------------
+# Core persistence
+# -------------------------
 def log_decision(
     sqlite_path: Path,
     decision: str,
@@ -209,13 +268,15 @@ def log_decision(
     reason_codes: List[str],
     ae_percentile: Optional[float] = None,
     ae_bucket: Optional[str] = None,
+    feature_path: Optional[str] = None,
 ) -> str:
-    """
-    Logs EVERY decision (APPROVE/REVIEW/BLOCK). Lightweight but very useful for thesis + dashboard metrics.
-    """
+    """Logs EVERY decision (APPROVE/REVIEW/BLOCK)."""
     init_db(sqlite_path)
     now = int(time.time())
     dec_id = f"dec_{payload_hash[:16]}_{now}"
+
+    txn_id = _get_txn_id(payload, meta)
+    ts = _get_timestamp(payload, meta)
 
     con = sqlite3.connect(str(sqlite_path))
     try:
@@ -225,10 +286,10 @@ def log_decision(
             INSERT INTO decisions (
               id, created, decision, payload_hash,
               score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
-              reason_codes, payload_min,
-                txn_id, timestamp
+              reason_codes, payload_min, feature_path,
+              txn_id, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 dec_id,
@@ -240,10 +301,10 @@ def log_decision(
                 float(ae_percentile) if ae_percentile is not None else None,
                 ae_bucket,
                 json.dumps(reason_codes),
-                json.dumps(_payload_min(payload)),
-                meta.get("txn_id"),
-                meta.get("timestamp"),
-                
+                json.dumps(_payload_min(payload, meta)),
+                feature_path,
+                txn_id,
+                ts,
             ),
         )
         con.commit()
@@ -263,10 +324,13 @@ def save_review_if_needed(
     reason_codes: List[str],
     ae_percentile: Optional[float] = None,
     ae_bucket: Optional[str] = None,
+    feature_path: Optional[str] = None,   # ✅ ADD THIS
 ) -> Optional[str]:
     """
     Persist only REVIEW events (queue items shown on dashboard).
-    Returns review_id if saved, else None.
+
+    IMPORTANT (Option B SHAP):
+    - If artifacts_dir is provided, we save a feature snapshot JSON and store feature_path.
     """
     if decision != "REVIEW":
         return None
@@ -275,38 +339,46 @@ def save_review_if_needed(
     now = int(time.time())
     review_id = f"rev_{payload_hash[:16]}"
 
+    txn_id = _get_txn_id(payload, meta)
+    ts = _get_timestamp(payload, meta)
+
+    # If we can, persist the exact feature vector used for scoring
     con = sqlite3.connect(str(sqlite_path))
     try:
         cur = con.cursor()
-
         # idempotent
         cur.execute("SELECT id FROM reviews WHERE id = ?", (review_id,))
         if cur.fetchone():
+            # if existing and feature_path is missing, attempt to backfill
+            if feature_path:
+                cur.execute("UPDATE reviews SET feature_path=? WHERE id=? AND (feature_path IS NULL OR feature_path='')", (feature_path, review_id))
+                con.commit()
             return review_id
 
         cur.execute(
             """
             INSERT INTO reviews (
-              id, created, txn_id, timestamp, decision,
-              score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
-              payload_hash, reason_codes, payload_min,
-              status, analyst_decision, analyst, notes, updated
+                id, created, txn_id, timestamp, decision,
+                score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
+                payload_hash, reason_codes, payload_min, feature_path,
+                status, analyst_decision, analyst, notes, updated
             )
-            VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?)
+            VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?)
             """,
             (
                 review_id,
                 now,
-                meta.get("txn_id"),
-                meta.get("timestamp"),
+                 txn_id,
+                ts,
                 float(p_xgb) if p_xgb is not None else None,
                 float(ae_err) if ae_err is not None else None,
                 float(ae_percentile) if ae_percentile is not None else None,
                 ae_bucket,
                 payload_hash,
                 json.dumps(reason_codes),
-                json.dumps(_payload_min(payload)),
-                now,
+                json.dumps(_payload_min(payload, meta)),
+                feature_path,   # ✅ HERE
+                 now,
             ),
         )
         con.commit()
@@ -314,6 +386,10 @@ def save_review_if_needed(
     finally:
         con.close()
 
+
+#--------------------------
+# Review queue + retrieval
+# -------------------------
 
 def load_review_queue(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any]]:
     init_db(sqlite_path)
@@ -333,11 +409,12 @@ def load_review_queue(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any
             (int(limit),),
         )
         rows = cur.fetchall()
+
         out: List[Dict[str, Any]] = []
         for r in rows:
             d = dict(r)
-            d["reason_codes"] = json.loads(d["reason_codes"] or "[]")
-            d["payload_min"] = json.loads(d["payload_min"] or "{}")
+            d["reason_codes"] = json.loads(d.get("reason_codes") or "[]")
+            d["payload_min"] = json.loads(d.get("payload_min") or "{}")
             out.append(d)
         return out
     finally:
@@ -356,9 +433,32 @@ def get_review_by_id(sqlite_path: Path, review_id: str) -> Optional[Dict[str, An
         if not row:
             return None
         d = dict(row)
-        d["reason_codes"] = json.loads(d["reason_codes"] or "[]")
-        d["payload_min"] = json.loads(d["payload_min"] or "{}")
+        d["reason_codes"] = json.loads(d.get("reason_codes") or "[]")
+        d["payload_min"] = json.loads(d.get("payload_min") or "{}")
         return d
+    finally:
+        con.close()
+
+def _update_review_feature_path_if_missing(sqlite_path: Path, review_id: str, feature_path: str) -> None:
+    """
+    If the review row exists already and feature_path is NULL/empty, fill it.
+    """
+    if not feature_path:
+        return
+
+    con = sqlite3.connect(str(sqlite_path))
+    try:
+        cur = con.cursor()
+        cur.execute(
+            """
+            UPDATE reviews
+            SET feature_path = ?
+            WHERE id = ?
+              AND (feature_path IS NULL OR feature_path = '')
+            """,
+            (feature_path, review_id),
+        )
+        con.commit()
     finally:
         con.close()
 
@@ -394,6 +494,9 @@ def update_review(
         con.close()
 
 
+# -------------------------
+# Feedback events + export
+# -------------------------
 def insert_feedback_event(
     sqlite_path: Path,
     review_id: str,
@@ -402,7 +505,7 @@ def insert_feedback_event(
 ) -> str:
     init_db(sqlite_path)
     now = int(time.time())
-    fb_id = f"fb_{int(time.time())}_{review_id[-6:]}"
+    fb_id = f"fb_{now}_{review_id[-6:]}"
 
     con = sqlite3.connect(str(sqlite_path))
     try:
@@ -416,5 +519,103 @@ def insert_feedback_event(
         )
         con.commit()
         return fb_id
+    finally:
+        con.close()
+
+
+def list_feedback_events(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any]]:
+    init_db(sqlite_path)
+
+    con = sqlite3.connect(str(sqlite_path))
+    con.row_factory = sqlite3.Row
+    try:
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT *
+            FROM feedback_events
+            ORDER BY created DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        con.close()
+
+
+def feedback_summary(sqlite_path: Path) -> Dict[str, Any]:
+    init_db(sqlite_path)
+
+    con = sqlite3.connect(str(sqlite_path))
+    con.row_factory = sqlite3.Row
+    try:
+        cur = con.cursor()
+
+        cur.execute("SELECT COUNT(*) AS n FROM feedback_events")
+        n_total = int(cur.fetchone()["n"])
+
+        cur.execute(
+            """
+            SELECT outcome, COUNT(*) AS n
+            FROM feedback_events
+            GROUP BY outcome
+            """
+        )
+        by_outcome = {row["outcome"]: int(row["n"]) for row in cur.fetchall()}
+
+        cur.execute("SELECT COUNT(*) AS n FROM reviews WHERE status='closed'")
+        n_closed = int(cur.fetchone()["n"])
+
+        return {
+            "feedback_total": n_total,
+            "feedback_by_outcome": by_outcome,
+            "reviews_closed_total": n_closed,
+        }
+    finally:
+        con.close()
+
+
+def export_feedback_samples(sqlite_path: Path, limit: int = 1000) -> List[Dict[str, Any]]:
+    """
+    Export labeled samples for retraining/analysis.
+    Uses CLOSED reviews as labels:
+      BLOCK => label 1 (fraud)
+      APPROVE => label 0 (legit)
+    """
+    init_db(sqlite_path)
+
+    con = sqlite3.connect(str(sqlite_path))
+    con.row_factory = sqlite3.Row
+    try:
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT *
+            FROM reviews
+            WHERE status='closed' AND analyst_decision IS NOT NULL
+            ORDER BY updated DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        )
+
+        rows = cur.fetchall()
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            d["reason_codes"] = json.loads(d.get("reason_codes") or "[]")
+            d["payload_min"] = json.loads(d.get("payload_min") or "{}")
+
+            if d.get("analyst_decision") == "BLOCK":
+                d["label"] = 1
+            elif d.get("analyst_decision") == "APPROVE":
+                d["label"] = 0
+            else:
+                d["label"] = None
+
+            out.append(d)
+
+        return out
     finally:
         con.close()

@@ -1,13 +1,15 @@
 # api/routers/preauth.py
 from __future__ import annotations
-
+import json
+from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends
 
 from api.core.config import Settings, get_settings
 from api.services.model_service import predict_from_processed_102
-from api.services.store import save_review_if_needed, log_decision
+from api.services.store import save_review_if_needed, log_decision, save_feature_snapshot
+
 
 router = APIRouter(tags=["preauth"])
 
@@ -22,6 +24,19 @@ def reason_details(codes: List[str]) -> List[Dict[str, str]]:
     return [{"code": c, "message": REASON_TEXT.get(c, c)} for c in codes]
 
 
+def _persist_feature_snapshot(settings: Settings, payload_hash: str, features: Dict[str, Any]) -> str:
+    """
+    Save full processed_102 features so we can generate real SHAP later.
+    Returns absolute path as string.
+    """
+    out_dir = settings.artifacts_path() / "feature_snapshots"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    p = out_dir / f"{payload_hash}.json"
+    p.write_text(json.dumps(features, ensure_ascii=False), encoding="utf-8")
+    return str(p)
+
+
 #def preauth_decision(payload: Dict[str, Any], settings: Settings = Depends(get_settings)):
     #p_xgb, ae_err, payload_hash, ae_pct, ae_bkt = predict_from_processed_102(settings, payload)
     
@@ -30,11 +45,16 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
     meta = body.get("meta", {}) or {}
     features = body.get("features", {}) or {}
 
-    p_xgb, ae_err, payload_hash, ae_pct, ae_bkt = predict_from_processed_102(
-        settings,
-        features,   # 🔒 model sees ONLY processed_102
-    )
 
+    p_xgb, ae_err, payload_hash, ae_pct, ae_bkt = predict_from_processed_102(settings, features)
+    feature_path = None
+    review_id = None
+
+    # review_id format must match store.py (rev_{payload_hash[:16]})
+    candidate_review_id = f"rev_{payload_hash[:16]}"
+
+# Only save feature snapshot when we actually create/keep a REVIEW item
+# (this is what you'll use for per-ticket SHAP)
 
     if p_xgb < settings.xgb_t_low:
         decision = "APPROVE"
@@ -55,7 +75,13 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
             decision = "REVIEW"
             if ae_bkt == "elevated":
                 reason_codes.append("ae_elevated")
-
+    if decision == "REVIEW":
+        review_id = candidate_review_id
+        feature_path = save_feature_snapshot(
+            settings.artifacts_path(),   # artifacts/
+            review_id=review_id,
+            features=features,           # exact processed-102 used by model
+        )
     review_id = save_review_if_needed(
         sqlite_path=settings.abs_sqlite_path(),
         decision=decision,
@@ -67,6 +93,7 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
         reason_codes=reason_codes,
         ae_percentile=ae_pct,
         ae_bucket=ae_bkt,
+        feature_path=feature_path,
     )
 
 
@@ -81,6 +108,7 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
         reason_codes=reason_codes,
         ae_percentile=ae_pct,
         ae_bucket=ae_bkt,
+        feature_path=feature_path,
     )
 
     resp = {

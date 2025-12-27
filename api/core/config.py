@@ -40,6 +40,8 @@ class Settings(BaseSettings):
 
     rule_amount_block: float = 2000.0
 
+    # api/core/config.py (add)
+    feedback_log_path: str = "artifacts/feedback_log.jsonl"
 
 
     # Storage
