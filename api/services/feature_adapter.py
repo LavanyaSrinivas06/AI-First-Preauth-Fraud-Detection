@@ -3,6 +3,14 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
+"""
+OPTION B (PARKED)
+-----------------
+Adapter to convert raw checkout payloads into processed_102 features.
+
+Not used in current Option A inference path.
+Kept for future extension / demo purposes.
+"""
 
 
 # These are the checkout-like fields we require (small + realistic).

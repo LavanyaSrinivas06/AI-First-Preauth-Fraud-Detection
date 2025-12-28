@@ -1,20 +1,25 @@
-#api/schemas/feedback.py
+# api/schemas/feedback.py
 from __future__ import annotations
 
 from typing import Literal, Optional
 from pydantic import BaseModel
 
 
-class FeedbackEventIn(BaseModel):
-    risk_assessment_id: str
-    outcome: Literal["fraud", "legit"]
+class FeedbackLabelIn(BaseModel):
+    """
+    Input schema for POST /feedback/label
+    """
+    review_id: str
+    outcome: Literal["APPROVE", "BLOCK"]
     notes: Optional[str] = None
 
 
-class FeedbackEventOut(BaseModel):
+class FeedbackEvent(BaseModel):
+    """
+    Stored feedback event (from feedback_events table)
+    """
     id: str
-    object: Literal["feedback_event"] = "feedback_event"
-    risk_assessment_id: str
-    outcome: Literal["fraud", "legit"]
+    review_id: str
+    outcome: Literal["APPROVE", "BLOCK"]
     notes: Optional[str] = None
     created: int

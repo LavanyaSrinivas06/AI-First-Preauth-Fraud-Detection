@@ -1,12 +1,14 @@
 # api/routers/feedback.py
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Optional
 
 from api.core.config import Settings, get_settings
 from api.core.errors import ApiError
+from api.schemas.feedback import FeedbackEvent, FeedbackLabelIn
 from api.services.store import (
     get_review_by_id,
     insert_feedback_event,
@@ -18,14 +20,9 @@ from api.services.store import (
 router = APIRouter(tags=["feedback"])
 
 
-class FeedbackIn(BaseModel):
-    review_id: str
-    outcome: str  # "APPROVE" | "BLOCK"
-    notes: Optional[str] = None
-
 
 @router.post("/feedback/label")
-def feedback_label(body: FeedbackIn, settings: Settings = Depends(get_settings)):
+def feedback_label(body: FeedbackLabelIn, settings: Settings = Depends(get_settings)):
     if body.outcome not in {"APPROVE", "BLOCK"}:
         raise ApiError(400, "invalid_request_error", "outcome must be APPROVE or BLOCK", param="outcome")
 
