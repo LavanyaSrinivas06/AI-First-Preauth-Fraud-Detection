@@ -3,6 +3,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+"""
+OPTION B (PARKED)
+-----------------
+Rule-based fallback decision engine for incomplete feature payloads.
+
+Not used in current Option A inference path.
+"""
+
+
 
 def is_model_feature_complete(payload: Dict[str, Any]) -> bool:
     """

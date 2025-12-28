@@ -49,11 +49,7 @@ def _ensure_numpy_dense(X) -> np.ndarray:
 def _load_ae_thresholds(art_dir: Path, settings: Settings) -> Tuple[float, float]:
     """
     Expects JSON like:
-    {
-      "review": 0.6915,
-      "block": 4.8955,
-      ...
-    }
+    { "review": 0.6915, "block": 4.8955, ... }
     """
     p = art_dir / settings.ae_thresholds_path
     if not p.exists():
@@ -88,10 +84,9 @@ def _load_model_schema_from_processed_train(settings: Settings) -> List[str]:
     return feats
 
 
-def _compute_legit_error_baseline(settings: Settings, ae_model) -> np.ndarray:
+def _compute_legit_error_baseline_from_val(settings: Settings, ae_model) -> np.ndarray:
     """
     Compute reconstruction errors distribution for legit (Class==0) from processed val.csv.
-    This enables a human-readable percentile: "AE anomaly: 99.9%".
     """
     val_path = Path(settings.data_dir) / "val.csv"
     if not val_path.exists():
@@ -124,6 +119,33 @@ def _compute_legit_error_baseline(settings: Settings, ae_model) -> np.ndarray:
     return base
 
 
+def _load_or_build_ae_baseline(art_dir: Path, settings: Settings, ae_model) -> np.ndarray:
+    """
+    Preferred: load baseline from artifacts/ae_errors/ae_baseline_legit_errors.npy
+    Fallback: compute from val.csv and save it to that path.
+    """
+    baseline_path = art_dir / settings.ae_baseline_path
+    baseline_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if baseline_path.exists():
+        try:
+            base = np.load(baseline_path)
+            base = np.asarray(base, dtype="float32")
+            base.sort()
+            return base
+        except Exception as e:
+            raise ApiError(500, "artifact_invalid", f"Invalid AE baseline npy: {baseline_path} ({type(e).__name__}: {e})")
+
+    # build once and persist
+    base = _compute_legit_error_baseline_from_val(settings, ae_model)
+    try:
+        np.save(baseline_path, base)
+    except Exception:
+        # do not fail the API just because save failed
+        pass
+    return base
+
+
 # -------------------------
 # Public: load once
 # -------------------------
@@ -140,7 +162,7 @@ def ensure_loaded(settings: Settings) -> LoadedArtifacts:
 
         model_features = _load_model_schema_from_processed_train(settings)
         ae_review, ae_block = _load_ae_thresholds(art_dir, settings)
-        ae_legit_sorted_errors = _compute_legit_error_baseline(settings, ae)
+        ae_legit_sorted_errors = _load_or_build_ae_baseline(art_dir, settings, ae)
 
     except ApiError:
         raise
