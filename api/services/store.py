@@ -9,28 +9,41 @@ from typing import Any, Dict, List, Optional
 
 
 # -------------------------
-# Feature snapshot (for real per-ticket SHAP)
+# Feature snapshot (for real SHAP later)
 # -------------------------
 def save_feature_snapshot(artifacts_dir: Path, review_id: str, features: Dict[str, Any]) -> str:
     """
     Persist the exact processed-102 features used for scoring.
-    Returns a relative path string to store in DB (portable).
+    Returns absolute path string to store in DB.
+    New layout: artifacts/snapshots/feature_snapshots/{review_id}.json
     """
-    snap_dir = artifacts_dir / "feature_snapshots"
+    snap_dir = artifacts_dir / "snapshots" / "feature_snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)
 
     snap_path = snap_dir / f"{review_id}.json"
     snap_path.write_text(json.dumps(features, ensure_ascii=False), encoding="utf-8")
 
-    # store relative path (from repo root perspective)
-    return str(snap_path.as_posix())
+    return str(snap_path.resolve())
 
+
+
+def save_review_payload_snapshot(payloads_dir: Path, review_id: str, payload: Dict[str, Any]) -> str:
+    """
+    Persist a thesis-safe review payload snapshot for human inspection.
+    Store under payloads/review/.
+    Returns path string.
+    """
+    out_dir = payloads_dir / "review"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / f"{review_id}.json"
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(out_path.as_posix())
 
 # -------------------------
-# DB initialization + migration
+# DB init + migrations
 # -------------------------
 def _ensure_column(con: sqlite3.Connection, table: str, col: str, col_type: str) -> None:
-    """Lightweight migration: add column if missing (SQLite-safe for local use)."""
     cur = con.cursor()
     cur.execute(f"PRAGMA table_info({table});")
     cols = {row[1] for row in cur.fetchall()}
@@ -45,7 +58,6 @@ def init_db(sqlite_path: Path) -> None:
     try:
         cur = con.cursor()
 
-        # REVIEW queue table
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS reviews (
@@ -53,18 +65,18 @@ def init_db(sqlite_path: Path) -> None:
               created INTEGER NOT NULL,
               txn_id TEXT,
               timestamp TEXT,
-              decision TEXT NOT NULL,     -- always "REVIEW"
+              decision TEXT NOT NULL,
               score_xgb REAL,
               ae_error REAL,
               ae_percentile_vs_legit REAL,
               ae_bucket TEXT,
               payload_hash TEXT,
-              reason_codes TEXT,          -- JSON string
-              payload_min TEXT,           -- JSON string
-              feature_path TEXT,          -- optional: path to saved feature snapshot (.json)
+              reason_codes TEXT,
+              payload_min TEXT,
+              feature_path TEXT,
 
-              status TEXT DEFAULT 'open', -- open | closed
-              analyst_decision TEXT,      -- APPROVE | BLOCK
+              status TEXT DEFAULT 'open',
+              analyst_decision TEXT,
               analyst TEXT,
               notes TEXT,
               updated INTEGER
@@ -72,28 +84,26 @@ def init_db(sqlite_path: Path) -> None:
             """
         )
 
-        # Decision log table (audit)
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS decisions (
               id TEXT PRIMARY KEY,
               created INTEGER NOT NULL,
-              decision TEXT NOT NULL,     -- APPROVE | REVIEW | BLOCK
+              decision TEXT NOT NULL,
               payload_hash TEXT NOT NULL,
               score_xgb REAL,
               ae_error REAL,
               ae_percentile_vs_legit REAL,
               ae_bucket TEXT,
-              reason_codes TEXT,          -- JSON string
-              payload_min TEXT,           -- JSON string
-              feature_path TEXT,          -- optional: path to saved feature snapshot (.json)
+              reason_codes TEXT,
+              payload_min TEXT,
+              feature_path TEXT,
               txn_id TEXT,
               timestamp TEXT
             )
             """
         )
 
-        # Feedback events
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS feedback_events (
@@ -106,7 +116,7 @@ def init_db(sqlite_path: Path) -> None:
             """
         )
 
-        # ---- migrations (for older DBs) ----
+        # migrations for older DBs
         _ensure_column(con, "reviews", "txn_id", "TEXT")
         _ensure_column(con, "reviews", "timestamp", "TEXT")
         _ensure_column(con, "reviews", "feature_path", "TEXT")
@@ -150,8 +160,7 @@ def _is_checkout_payload(payload: Dict[str, Any]) -> bool:
 
 
 def _is_processed_102(payload: Dict[str, Any]) -> bool:
-    return any(isinstance(k, str) and (k.startswith("num__") or k.startswith("cat__")) 
-               for k in payload.keys())
+    return any(isinstance(k, str) and (k.startswith("num__") or k.startswith("cat__")) for k in payload.keys())
 
 
 def _payload_min_checkout(payload: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -211,7 +220,6 @@ def _payload_min_processed(
         if k in payload:
             out[k] = payload.get(k)
 
-    # top |V| components
     v_vals: List[tuple[str, float]] = []
     for k, v in payload.items():
         if not isinstance(k, str) or not k.startswith("num__V"):
@@ -226,7 +234,6 @@ def _payload_min_processed(
     for k, fv in v_vals[: max(0, int(top_v))]:
         out[k] = fv
 
-    # cat flags on
     cats: List[str] = []
     for k, v in payload.items():
         if not isinstance(k, str) or not k.startswith("cat__"):
@@ -270,7 +277,6 @@ def log_decision(
     ae_bucket: Optional[str] = None,
     feature_path: Optional[str] = None,
 ) -> str:
-    """Logs EVERY decision (APPROVE/REVIEW/BLOCK)."""
     init_db(sqlite_path)
     now = int(time.time())
     dec_id = f"dec_{payload_hash[:16]}_{now}"
@@ -324,14 +330,8 @@ def save_review_if_needed(
     reason_codes: List[str],
     ae_percentile: Optional[float] = None,
     ae_bucket: Optional[str] = None,
-    feature_path: Optional[str] = None,   # ✅ ADD THIS
+    feature_path: Optional[str] = None,
 ) -> Optional[str]:
-    """
-    Persist only REVIEW events (queue items shown on dashboard).
-
-    IMPORTANT (Option B SHAP):
-    - If artifacts_dir is provided, we save a feature snapshot JSON and store feature_path.
-    """
     if decision != "REVIEW":
         return None
 
@@ -342,33 +342,27 @@ def save_review_if_needed(
     txn_id = _get_txn_id(payload, meta)
     ts = _get_timestamp(payload, meta)
 
-    # If we can, persist the exact feature vector used for scoring
     con = sqlite3.connect(str(sqlite_path))
     try:
         cur = con.cursor()
-        # idempotent
         cur.execute("SELECT id FROM reviews WHERE id = ?", (review_id,))
         if cur.fetchone():
-            # if existing and feature_path is missing, attempt to backfill
-            if feature_path:
-                cur.execute("UPDATE reviews SET feature_path=? WHERE id=? AND (feature_path IS NULL OR feature_path='')", (feature_path, review_id))
-                con.commit()
             return review_id
 
         cur.execute(
             """
             INSERT INTO reviews (
-                id, created, txn_id, timestamp, decision,
-                score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
-                payload_hash, reason_codes, payload_min, feature_path,
-                status, analyst_decision, analyst, notes, updated
+              id, created, txn_id, timestamp, decision,
+              score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
+              payload_hash, reason_codes, payload_min, feature_path,
+              status, analyst_decision, analyst, notes, updated
             )
             VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?)
             """,
             (
                 review_id,
                 now,
-                 txn_id,
+                txn_id,
                 ts,
                 float(p_xgb) if p_xgb is not None else None,
                 float(ae_err) if ae_err is not None else None,
@@ -377,8 +371,8 @@ def save_review_if_needed(
                 payload_hash,
                 json.dumps(reason_codes),
                 json.dumps(_payload_min(payload, meta)),
-                feature_path,   # ✅ HERE
-                 now,
+                feature_path,
+                now,
             ),
         )
         con.commit()
@@ -387,13 +381,11 @@ def save_review_if_needed(
         con.close()
 
 
-#--------------------------
-# Review queue + retrieval
 # -------------------------
-
+# Review reads/writes
+# -------------------------
 def load_review_queue(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any]]:
     init_db(sqlite_path)
-
     con = sqlite3.connect(str(sqlite_path))
     con.row_factory = sqlite3.Row
     try:
@@ -409,7 +401,6 @@ def load_review_queue(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any
             (int(limit),),
         )
         rows = cur.fetchall()
-
         out: List[Dict[str, Any]] = []
         for r in rows:
             d = dict(r)
@@ -423,7 +414,6 @@ def load_review_queue(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any
 
 def get_review_by_id(sqlite_path: Path, review_id: str) -> Optional[Dict[str, Any]]:
     init_db(sqlite_path)
-
     con = sqlite3.connect(str(sqlite_path))
     con.row_factory = sqlite3.Row
     try:
@@ -436,29 +426,6 @@ def get_review_by_id(sqlite_path: Path, review_id: str) -> Optional[Dict[str, An
         d["reason_codes"] = json.loads(d.get("reason_codes") or "[]")
         d["payload_min"] = json.loads(d.get("payload_min") or "{}")
         return d
-    finally:
-        con.close()
-
-def _update_review_feature_path_if_missing(sqlite_path: Path, review_id: str, feature_path: str) -> None:
-    """
-    If the review row exists already and feature_path is NULL/empty, fill it.
-    """
-    if not feature_path:
-        return
-
-    con = sqlite3.connect(str(sqlite_path))
-    try:
-        cur = con.cursor()
-        cur.execute(
-            """
-            UPDATE reviews
-            SET feature_path = ?
-            WHERE id = ?
-              AND (feature_path IS NULL OR feature_path = '')
-            """,
-            (feature_path, review_id),
-        )
-        con.commit()
     finally:
         con.close()
 
@@ -525,7 +492,6 @@ def insert_feedback_event(
 
 def list_feedback_events(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any]]:
     init_db(sqlite_path)
-
     con = sqlite3.connect(str(sqlite_path))
     con.row_factory = sqlite3.Row
     try:
@@ -546,7 +512,6 @@ def list_feedback_events(sqlite_path: Path, limit: int = 200) -> List[Dict[str, 
 
 def feedback_summary(sqlite_path: Path) -> Dict[str, Any]:
     init_db(sqlite_path)
-
     con = sqlite3.connect(str(sqlite_path))
     con.row_factory = sqlite3.Row
     try:
