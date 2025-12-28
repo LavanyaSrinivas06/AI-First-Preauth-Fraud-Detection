@@ -9,6 +9,13 @@ from api.services.store import init_db
 router = APIRouter(tags=["health"])
 
 
+@router.get("/health")
+def health_root(settings: Settings = Depends(get_settings)):
+    # simple liveness + DB init (safe)
+    init_db(settings.abs_sqlite_path())
+    return {"status": "ok"}
+
+
 @router.get("/health/api")
 def health_api(settings: Settings = Depends(get_settings)):
     init_db(settings.abs_sqlite_path())
@@ -17,5 +24,5 @@ def health_api(settings: Settings = Depends(get_settings)):
 
 @router.get("/health/model")
 def health_model():
-    # keep simple; if model loads at first request, no need to force-load here
+    # model loads lazily on first request; keep simple
     return {"status": "ok"}

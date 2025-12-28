@@ -42,3 +42,8 @@ data/raw/creditcard.csv
 data/raw/creditcard.csv
 data/raw/creditcard.csv
 data/raw/ecom_synthetic_fraud_dataset_v1.csv
+
+
+payloads/review/*.json
+artifacts/feature_snapshots/*.json
+
