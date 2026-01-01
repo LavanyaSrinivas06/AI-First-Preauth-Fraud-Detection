@@ -1,0 +1,20 @@
+{
+  "train_base_rows": 397960,
+  "feedback_rows": 3,
+  "combined_rows": 397963,
+  "val": {
+    "rows": 42721,
+    "fraud_rate": 0.001310830738980829,
+    "roc_auc": 0.998287740034488,
+    "pr_auc": 0.9054348760859978,
+    "f1@0.5": 0.9074074074074074
+  },
+  "test": {
+    "rows": 42722,
+    "fraud_rate": 0.0012171714807359207,
+    "roc_auc": 0.9941081826539995,
+    "pr_auc": 0.8432906459923293,
+    "f1@0.5": 0.8118811881188119
+  },
+  "model_path": "artifacts/xgb_model_feedback.pkl"
+}

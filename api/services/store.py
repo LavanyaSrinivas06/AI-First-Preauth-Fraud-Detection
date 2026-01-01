@@ -26,7 +26,6 @@ def save_feature_snapshot(artifacts_dir: Path, review_id: str, features: Dict[st
     return str(snap_path.resolve())
 
 
-
 def save_review_payload_snapshot(payloads_dir: Path, review_id: str, payload: Dict[str, Any]) -> str:
     """
     Persist a thesis-safe review payload snapshot for human inspection.
@@ -39,6 +38,7 @@ def save_review_payload_snapshot(payloads_dir: Path, review_id: str, payload: Di
     out_path = out_dir / f"{review_id}.json"
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return str(out_path.as_posix())
+
 
 # -------------------------
 # DB init + migrations
@@ -79,7 +79,8 @@ def init_db(sqlite_path: Path) -> None:
               analyst_decision TEXT,
               analyst TEXT,
               notes TEXT,
-              updated INTEGER
+              updated INTEGER,
+              model_version TEXT
             )
             """
         )
@@ -99,7 +100,8 @@ def init_db(sqlite_path: Path) -> None:
               payload_min TEXT,
               feature_path TEXT,
               txn_id TEXT,
-              timestamp TEXT
+              timestamp TEXT,
+              model_version TEXT
             )
             """
         )
@@ -120,9 +122,12 @@ def init_db(sqlite_path: Path) -> None:
         _ensure_column(con, "reviews", "txn_id", "TEXT")
         _ensure_column(con, "reviews", "timestamp", "TEXT")
         _ensure_column(con, "reviews", "feature_path", "TEXT")
+        _ensure_column(con, "reviews", "model_version", "TEXT")
+
         _ensure_column(con, "decisions", "txn_id", "TEXT")
         _ensure_column(con, "decisions", "timestamp", "TEXT")
         _ensure_column(con, "decisions", "feature_path", "TEXT")
+        _ensure_column(con, "decisions", "model_version", "TEXT")
 
         con.commit()
     finally:
@@ -276,6 +281,7 @@ def log_decision(
     ae_percentile: Optional[float] = None,
     ae_bucket: Optional[str] = None,
     feature_path: Optional[str] = None,
+    model_version: Optional[str] = None,
 ) -> str:
     init_db(sqlite_path)
     now = int(time.time())
@@ -293,9 +299,9 @@ def log_decision(
               id, created, decision, payload_hash,
               score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
               reason_codes, payload_min, feature_path,
-              txn_id, timestamp
+              txn_id, timestamp, model_version
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 dec_id,
@@ -310,8 +316,10 @@ def log_decision(
                 json.dumps(_payload_min(payload, meta)),
                 feature_path,
                 txn_id,
-                ts,
+                ts,             # ✅ timestamp goes here
+                model_version,  # ✅ model_version last
             ),
+
         )
         con.commit()
         return dec_id
@@ -331,6 +339,7 @@ def save_review_if_needed(
     ae_percentile: Optional[float] = None,
     ae_bucket: Optional[str] = None,
     feature_path: Optional[str] = None,
+    model_version: Optional[str] = None,
 ) -> Optional[str]:
     if decision != "REVIEW":
         return None
@@ -355,10 +364,11 @@ def save_review_if_needed(
               id, created, txn_id, timestamp, decision,
               score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
               payload_hash, reason_codes, payload_min, feature_path,
-              status, analyst_decision, analyst, notes, updated
+              status, analyst_decision, analyst, notes, updated, model_version
             )
-            VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?)
+            VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?, ?)
             """,
+            
             (
                 review_id,
                 now,
@@ -372,8 +382,10 @@ def save_review_if_needed(
                 json.dumps(reason_codes),
                 json.dumps(_payload_min(payload, meta)),
                 feature_path,
-                now,
+                now,            # ✅ updated
+                model_version,  # ✅ model_version
             ),
+
         )
         con.commit()
         return review_id
@@ -459,6 +471,28 @@ def update_review(
         return cur.rowcount > 0
     finally:
         con.close()
+
+
+def assign_review_to_analyst(sqlite_path: Path, review_id: str, analyst: str) -> bool:
+    init_db(sqlite_path)
+    now = int(time.time())
+    con = sqlite3.connect(str(sqlite_path))
+    try:
+        cur = con.cursor()
+        cur.execute(
+            """
+            UPDATE reviews
+            SET analyst=?, updated=?
+            WHERE id=? AND status='open'
+            """,
+            (analyst, now, review_id),
+        )
+        con.commit()
+        return cur.rowcount > 0
+    finally:
+        con.close()
+
+
 
 
 # -------------------------

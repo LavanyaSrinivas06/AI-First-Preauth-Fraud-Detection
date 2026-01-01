@@ -23,6 +23,7 @@ def render_log_page(cfg: Dict[str, Any], *, api_base: str):
     with top[3]:
         if st.button("Refresh", use_container_width=True):
             st.cache_data.clear()
+            st.rerun()
 
     try:
         data = api_get_feedback_export(api_base, limit=int(limit))
@@ -41,7 +42,7 @@ def render_log_page(cfg: Dict[str, Any], *, api_base: str):
         df["review_id"] = df["id"]
 
     if "updated" in df.columns:
-        def to_dt(v):
+        def to_dt(v: Any):
             try:
                 if pd.isna(v):
                     return None
@@ -58,7 +59,7 @@ def render_log_page(cfg: Dict[str, Any], *, api_base: str):
     if q.strip():
         qq = q.strip().lower()
         def row_match(r):
-            for col in ["review_id", "analyst", "notes", "payload_hash"]:
+            for col in ["review_id", "analyst", "notes", "payload_hash", "model_version"]:
                 if col in r and pd.notna(r[col]) and qq in str(r[col]).lower():
                     return True
             return False
@@ -73,6 +74,7 @@ def render_log_page(cfg: Dict[str, Any], *, api_base: str):
         "score_xgb",
         "ae_bucket",
         "ae_percentile_vs_legit",
+        "model_version",
         "reason_codes",
     ] if c in df.columns]
 

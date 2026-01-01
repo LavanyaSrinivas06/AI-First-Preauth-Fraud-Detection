@@ -7,6 +7,6 @@ api:
 paths:
   static_dir: "dashboard/static"
 
-queue:
-  min_score_xgb: 0.0
-  max_rows: 200
+ui:
+  max_rows_queue: 200
+  max_rows_log: 500
