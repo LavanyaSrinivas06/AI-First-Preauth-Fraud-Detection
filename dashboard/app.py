@@ -31,24 +31,20 @@ def cfg_get(cfg: Dict[str, Any], *keys: str, default=None):
     return cur
 
 
-def sidebar(cfg: Dict[str, Any]) -> Tuple[str, float, int, str]:
-    st.sidebar.header("Settings")
+def sidebar(cfg: Dict[str, Any]) -> Tuple[str, str]:
+    st.sidebar.markdown("## Navigation")
+
+    page = st.sidebar.radio("Page", ["Ops", "Queue", "Log"], index=0)
+
+    st.sidebar.divider()
+    st.sidebar.markdown("## Settings")
 
     api_base = str(cfg_get(cfg, "api", "base_url", default="http://127.0.0.1:8000")).rstrip("/")
-    st.sidebar.text_input("API base URL", value=api_base, key="api_base")
+    api_base = st.sidebar.text_input("API base URL", value=api_base)
 
-    st.sidebar.divider()
-    st.sidebar.subheader("Queue filters")
+    st.sidebar.caption("Tip: Keep API running: `uvicorn api.main:app --reload`")
 
-    min_default = float(cfg_get(cfg, "queue", "min_score_xgb", default=0.0))
-    min_score = st.sidebar.slider("Min XGB prob (for viewing)", 0.0, 1.0, min_default, 0.01)
-
-    max_rows = int(cfg_get(cfg, "queue", "max_rows", default=200))
-
-    st.sidebar.divider()
-    page = st.sidebar.radio("Pages", ["Queue", "Log"], index=0)
-
-    return page, float(min_score), int(max_rows), st.session_state["api_base"]
+    return page, api_base
 
 
 def main():
@@ -57,13 +53,16 @@ def main():
 
     st.title(cfg_get(cfg, "app", "title", default="FPN Review Dashboard"))
 
-    page, min_score, max_rows, api_base = sidebar(cfg)
+    page, api_base = sidebar(cfg)
 
-    if page == "Queue":
-        from dashboard.pages.queue import render_queue_page
-        render_queue_page(cfg, api_base=api_base, min_score=min_score, max_rows=max_rows)
+    if page == "Ops":
+        from dashboard.screens.ops import render_ops_page
+        render_ops_page(cfg, api_base=api_base)
+    elif page == "Queue":
+        from dashboard.screens.queue import render_queue_page
+        render_queue_page(cfg, api_base=api_base)
     else:
-        from dashboard.pages.log import render_log_page
+        from dashboard.screens.log import render_log_page
         render_log_page(cfg, api_base=api_base)
 
 

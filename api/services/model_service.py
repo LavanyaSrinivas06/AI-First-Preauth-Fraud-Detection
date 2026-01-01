@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -27,9 +28,82 @@ class LoadedArtifacts:
     ae_review: float
     ae_block: float
     ae_legit_sorted_errors: np.ndarray     # baseline distribution for AE percentile
+    model_version: str                     # ACTIVE model version string (stable)
 
 
 _ART: Optional[LoadedArtifacts] = None
+
+
+# -------------------------
+# Model registry helpers
+# -------------------------
+_ISO_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+
+def _normalize_model_version(v: str) -> str:
+    """
+    Guardrail: earlier runs accidentally stored ISO timestamps or legacy placeholders
+    as model_version. We normalize aggressively to stable semantic versions.
+    """
+    s = (v or "").strip()
+
+    if not s:
+        return "v1"
+
+    if s.lower() in {"legacy-unknown", "unknown", "n/a", "none"}:
+        return "v1"
+
+    # If it looks like an ISO timestamp: force to v1 (never store timestamps)
+    if _ISO_TS_RE.match(s):
+        return "v1"
+
+    # Keep only safe characters (avoid accidental injection / weird strings)
+    s2 = re.sub(r"[^a-zA-Z0-9._\-]+", "-", s).strip("-")
+    return s2 or "v1"
+
+
+
+def _load_active_xgb_registry(art_dir: Path) -> dict:
+    """
+    Load XGB model via active model pointer.
+    In thesis mode we REQUIRE this file to prevent silent legacy logging.
+    """
+    p = art_dir / "models" / "active_xgb.json"
+    if not p.exists():
+        raise ApiError(
+            500,
+            "model_registry_missing",
+            f"Missing model registry pointer: {p}. Create artifacts/models/active_xgb.json to choose active XGB model.",
+        )
+
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise ApiError(500, "model_registry_invalid", f"Invalid JSON in {p}: {type(e).__name__}: {e}")
+
+    active_model = str(obj.get("active_model", "")).strip()
+    version_raw = str(obj.get("version", "")).strip()
+
+    if not active_model:
+        raise ApiError(500, "model_registry_invalid", f"{p} missing 'active_model'.")
+
+    version = _normalize_model_version(version_raw)
+
+    # Hard rule: in thesis mode, promote only semantic tags (xgb-...) or v1 fallback
+    # (prevents accidental timestamps creeping back in)
+    if version == "v1":
+        # allow v1 as explicit baseline, but only if you intentionally set it
+        # (still okay for early experiments)
+        pass
+    elif not version.startswith("xgb-"):
+        raise ApiError(
+            500,
+            "model_registry_error",
+            f"Active model version not valid: '{version}'. Use semantic tags like 'xgb-feedback-2026w01'.",
+        )
+
+    obj["version"] = version
+    obj["active_model"] = active_model
+    return obj
 
 
 # -------------------------
@@ -85,9 +159,6 @@ def _load_model_schema_from_processed_train(settings: Settings) -> List[str]:
 
 
 def _compute_legit_error_baseline_from_val(settings: Settings, ae_model) -> np.ndarray:
-    """
-    Compute reconstruction errors distribution for legit (Class==0) from processed val.csv.
-    """
     val_path = Path(settings.data_dir) / "val.csv"
     if not val_path.exists():
         raise ApiError(500, "artifact_missing", f"Missing validation file for AE baseline: {val_path}")
@@ -120,10 +191,6 @@ def _compute_legit_error_baseline_from_val(settings: Settings, ae_model) -> np.n
 
 
 def _load_or_build_ae_baseline(art_dir: Path, settings: Settings, ae_model) -> np.ndarray:
-    """
-    Preferred: load baseline from artifacts/ae_errors/ae_baseline_legit_errors.npy
-    Fallback: compute from val.csv and save it to that path.
-    """
     baseline_path = art_dir / settings.ae_baseline_path
     baseline_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -134,14 +201,16 @@ def _load_or_build_ae_baseline(art_dir: Path, settings: Settings, ae_model) -> n
             base.sort()
             return base
         except Exception as e:
-            raise ApiError(500, "artifact_invalid", f"Invalid AE baseline npy: {baseline_path} ({type(e).__name__}: {e})")
+            raise ApiError(
+                500,
+                "artifact_invalid",
+                f"Invalid AE baseline npy: {baseline_path} ({type(e).__name__}: {e})",
+            )
 
-    # build once and persist
     base = _compute_legit_error_baseline_from_val(settings, ae_model)
     try:
         np.save(baseline_path, base)
     except Exception:
-        # do not fail the API just because save failed
         pass
     return base
 
@@ -157,7 +226,15 @@ def ensure_loaded(settings: Settings) -> LoadedArtifacts:
     art_dir = settings.artifacts_path()
 
     try:
-        xgb = joblib.load(art_dir / settings.xgb_model_path)
+        reg = _load_active_xgb_registry(art_dir)
+        active_name = str(reg.get("active_model", "xgb_model.pkl")).strip()
+        model_version = _normalize_model_version(str(reg.get("version", "v1")).strip())
+
+        xgb_path = (art_dir / "models" / active_name).resolve()
+        if not xgb_path.exists():
+            raise ApiError(500, "artifact_missing", f"Active XGB model not found: {xgb_path}")
+
+        xgb = joblib.load(xgb_path)
         ae = load_model(art_dir / settings.ae_model_path, compile=False)
 
         model_features = _load_model_schema_from_processed_train(settings)
@@ -178,6 +255,7 @@ def ensure_loaded(settings: Settings) -> LoadedArtifacts:
         ae_review=ae_review,
         ae_block=ae_block,
         ae_legit_sorted_errors=ae_legit_sorted_errors,
+        model_version=model_version,
     )
     return _ART
 
@@ -228,25 +306,16 @@ def predict_from_processed_102(
     settings: Settings,
     payload: Dict[str, Any],
 ) -> Tuple[float, Optional[float], str, Optional[float], str]:
-    """
-    Option A (thesis-clean):
-    Payload MUST contain the exact 102 processed features (same as train/val/test).
-    Returns:
-      (p_xgb, ae_err_or_none, payload_hash, ae_pct_or_none, ae_bucket_or_na)
-    """
     art = ensure_loaded(settings)
     payload_hash = _sha256_dict(payload)
 
     _validate_processed_payload(payload, art.model_features)
 
-    # Build row in correct order
     row = {k: payload[k] for k in art.model_features}
     X_df = pd.DataFrame([row], columns=art.model_features)
 
-    # XGB always
     p_xgb = score_xgb(art, X_df)
 
-    # AE only in gray zone
     if not (settings.xgb_t_low <= p_xgb < settings.xgb_t_high):
         return p_xgb, None, payload_hash, None, "n/a"
 

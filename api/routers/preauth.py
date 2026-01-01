@@ -116,6 +116,7 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
 
     # Load AE thresholds for messaging (optional, but makes reasons correct)
     art = ensure_loaded(settings)
+    model_version = getattr(art, "model_version", "v1")
     ae_review_th = getattr(art, "ae_review", None)
     ae_block_th = getattr(art, "ae_block", None)
 
@@ -168,6 +169,7 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
         ae_percentile=ae_pct,
         ae_bucket=ae_bkt,
         feature_path=feature_path,
+        model_version=model_version,   # NEW
     )
 
     log_decision(
@@ -182,7 +184,9 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
         ae_percentile=ae_pct,
         ae_bucket=ae_bkt,
         feature_path=feature_path,
+        model_version=model_version,   # NEW
     )
+
 
     resp: Dict[str, Any] = {
         "decision": decision,

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from api.core.config import Settings, get_settings
 from api.core.errors import ApiError
 from api.schemas.review import ReviewCloseIn
+from api.services.store import assign_review_to_analyst
 from api.services.store import (
     insert_feedback_event,
     load_review_queue,
@@ -67,3 +68,19 @@ def review_close(review_id: str, body: ReviewCloseIn, settings: Settings = Depen
     )
 
     return {"status": "ok", "review_id": review_id, "closed_as": analyst_decision, "feedback_id": fb_id}
+class AssignIn(BaseModel):
+    analyst: str
+
+@router.post("/review/{review_id}/assign")
+def assign_review(review_id: str, body: AssignIn, settings: Settings = Depends(get_settings)):
+    analyst = str(body.analyst).strip()
+    if not analyst:
+        raise ApiError(400, "invalid_request_error", "analyst is required", param="analyst")
+
+    # local import to avoid modifying top-level imports
+
+    ok = assign_review_to_analyst(settings.abs_sqlite_path(), review_id=review_id, analyst=analyst)
+    if not ok:
+        raise ApiError(404, "resource_missing", "Review not found.", param="review_id")
+    return {"status": "ok", "review_id": review_id, "analyst": analyst}
+
