@@ -27,11 +27,9 @@ def render_details(
     st.markdown("### Why it was sent to REVIEW")
     details = review.get("reason_details")
     if details:
-        lines = fmt_reason_details(details)
-        for line in lines:
+        for line in fmt_reason_details(details):
             st.write(f"- {line}")
     else:
-        # fallback
         rc = review.get("reason_codes", [])
         if isinstance(rc, list) and rc:
             for r in rc:
@@ -41,11 +39,12 @@ def render_details(
 
     # Scores
     st.markdown("### Scores")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("XGB probability", f"{review.get('score_xgb', '—')}")
     c2.metric("AE bucket", f"{review.get('ae_bucket', '—')}")
     pct = review.get("ae_percentile_vs_legit", None)
     c3.metric("AE percentile vs legit", (f"{float(pct):.2f}" if pct is not None else "—"))
+    c4.metric("Model version", f"{review.get('model_version', '—')}")
 
     # Payload snapshot
     with st.expander("Payload snapshot (stored subset)", expanded=False):
@@ -60,13 +59,8 @@ def render_details(
 
     shap_path = shap_png_path_for_review(static_dir, review_id)
     shap_file = None
-    if shap_path and st.session_state.get("last_shap_review_id") == review_id:
-        # after generation, rerender will show
+    if shap_path and __import__("pathlib").Path(shap_path).exists():
         shap_file = shap_path
-    else:
-        # if file already exists
-        if shap_path and __import__("pathlib").Path(shap_path).exists():
-            shap_file = shap_path
 
     left, right = st.columns([1.2, 1.8], vertical_alignment="top")
     with left:
@@ -80,7 +74,6 @@ def render_details(
                 max_display=15,
             )
             if ok:
-                st.session_state["last_shap_review_id"] = review_id
                 st.success(msg)
                 st.rerun()
             else:
@@ -95,7 +88,6 @@ def render_details(
         else:
             st.warning("Per-review SHAP not found yet.")
 
-    # Back
     if on_back is not None:
         if st.button("Back to queue"):
             on_back()
