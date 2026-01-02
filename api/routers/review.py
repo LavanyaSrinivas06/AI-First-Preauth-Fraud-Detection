@@ -67,7 +67,15 @@ def review_close(review_id: str, body: ReviewCloseIn, settings: Settings = Depen
         notes=notes,
     )
 
-    return {"status": "ok", "review_id": review_id, "closed_as": analyst_decision, "feedback_id": fb_id}
+    return {
+    "ok": True,
+    "status": "ok",
+    "review_id": review_id,
+    "closed_as": body.analyst_decision,
+    "feedback_id": fb_id,
+}
+
+    
 class AssignIn(BaseModel):
     analyst: str
 
