@@ -5,6 +5,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 
+
+
+
 class ApiError(Exception):
     def __init__(self, status_code: int, code: str, message: str, param: str | None = None):
         self.status_code = status_code
