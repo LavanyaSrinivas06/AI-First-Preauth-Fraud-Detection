@@ -1,0 +1,22 @@
+[run]
+branch = True
+source =
+    api
+    src
+omit =
+    */__pycache__/*
+    */tests/*
+    dashboard/*
+    scripts/*
+    archive/*
+    thesis_quality/*
+    */.venv/*
+
+[report]
+show_missing = True
+skip_covered = True
+fail_under = 80
+exclude_lines =
+    pragma: no cover
+    if __name__ == "__main__":
+    raise NotImplementedError
