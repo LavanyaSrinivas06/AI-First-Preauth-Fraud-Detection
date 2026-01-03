@@ -1,0 +1,113 @@
+{
+  "baseline": "data/processed/train.csv",
+  "current": "thesis_quality/drift/results/current_simulated.csv",
+  "n_features_compared": 102,
+  "top_k": 20,
+  "top_drifting": [
+    {
+      "feature": "num__V12",
+      "psi": 3.2613695460952217,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V17",
+      "psi": 3.164813142886412,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V11",
+      "psi": 2.9817305383231916,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V16",
+      "psi": 2.609613121232691,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V10",
+      "psi": 2.523017465234211,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V14",
+      "psi": 2.369959913041403,
+      "status": "significant"
+    },
+    {
+      "feature": "num__Amount",
+      "psi": 2.209046684745734,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V18",
+      "psi": 2.1113840231704,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V3",
+      "psi": 1.603892825196692,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V4",
+      "psi": 1.5944287168745817,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V7",
+      "psi": 1.4767369377014432,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V1",
+      "psi": 1.3862999508848408,
+      "status": "significant"
+    },
+    {
+      "feature": "cat__is_proxy_vpn_False",
+      "psi": 1.3524221195983506,
+      "status": "significant"
+    },
+    {
+      "feature": "num__V9",
+      "psi": 1.3458290448197505,
+      "status": "significant"
+    },
+    {
+      "feature": "cat__is_proxy_vpn_True",
+      "psi": 1.3197740184669928,
+      "status": "significant"
+    },
+    {
+      "feature": "cat__is_new_device_False",
+      "psi": 1.2127226135574205,
+      "status": "significant"
+    },
+    {
+      "feature": "cat__is_new_device_True",
+      "psi": 1.19482807686842,
+      "status": "significant"
+    },
+    {
+      "feature": "cat__device_os_Android",
+      "psi": 1.169194420397316,
+      "status": "significant"
+    },
+    {
+      "feature": "cat__browser_Edge",
+      "psi": 1.1688932043255449,
+      "status": "significant"
+    },
+    {
+      "feature": "cat__browser_Safari",
+      "psi": 1.1686669065141082,
+      "status": "significant"
+    }
+  ],
+  "counts_by_status": {
+    "stable": 56,
+    "significant": 41,
+    "moderate": 5
+  }
+}
