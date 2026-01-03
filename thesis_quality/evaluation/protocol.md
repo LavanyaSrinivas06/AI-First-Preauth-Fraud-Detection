@@ -49,3 +49,19 @@ Saved under `thesis_quality/evaluation/plots/`:
   - `thesis_quality/evaluation/benchmark_table.csv`
 - Plots:
   - `thesis_quality/evaluation/plots/*.png`
+
+
+
+## Decision-Engine Evaluation (System-Level)
+
+Beyond individual model performance, the full fraud decision engine was evaluated on the test set.
+The engine combines XGBoost probability thresholds with Autoencoder anomaly gates and produces
+three outcomes: APPROVE, REVIEW, and BLOCK.
+
+Two evaluation views were considered:
+
+1. Flagged transactions (REVIEW ∪ BLOCK), representing all transactions escalated for risk handling.
+2. Auto-blocked transactions (BLOCK only), representing fully automated fraud prevention.
+
+The system achieves an 84.6% fraud capture rate when considering all flagged transactions,
+while maintaining a very low review rate (0.1%) and minimal customer friction.
