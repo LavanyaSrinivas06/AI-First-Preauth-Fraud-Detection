@@ -55,4 +55,3 @@ artifacts/stores/*.sqlite-journal
 artifacts/stores/*.sqlite-wal
 artifacts/stores/*.sqlite-shm
 
-
