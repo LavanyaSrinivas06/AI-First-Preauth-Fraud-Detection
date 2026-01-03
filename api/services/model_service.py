@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import threading
 
 import joblib
 import numpy as np
@@ -15,6 +17,7 @@ from tensorflow.keras.models import load_model
 
 from api.core.config import Settings
 from api.core.errors import ApiError
+
 
 
 # -------------------------
@@ -34,16 +37,15 @@ class LoadedArtifacts:
 _ART: Optional[LoadedArtifacts] = None
 
 
+_ART_LOCK = threading.Lock()
+_AE_PREDICT_LOCK = threading.Lock()
+
 # -------------------------
 # Model registry helpers
 # -------------------------
 _ISO_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 
 def _normalize_model_version(v: str) -> str:
-    """
-    Guardrail: earlier runs accidentally stored ISO timestamps or legacy placeholders
-    as model_version. We normalize aggressively to stable semantic versions.
-    """
     s = (v or "").strip()
 
     if not s:
@@ -52,21 +54,14 @@ def _normalize_model_version(v: str) -> str:
     if s.lower() in {"legacy-unknown", "unknown", "n/a", "none"}:
         return "v1"
 
-    # If it looks like an ISO timestamp: force to v1 (never store timestamps)
     if _ISO_TS_RE.match(s):
         return "v1"
 
-    # Keep only safe characters (avoid accidental injection / weird strings)
     s2 = re.sub(r"[^a-zA-Z0-9._\-]+", "-", s).strip("-")
     return s2 or "v1"
 
 
-
 def _load_active_xgb_registry(art_dir: Path) -> dict:
-    """
-    Load XGB model via active model pointer.
-    In thesis mode we REQUIRE this file to prevent silent legacy logging.
-    """
     p = art_dir / "models" / "active_xgb.json"
     if not p.exists():
         raise ApiError(
@@ -88,13 +83,7 @@ def _load_active_xgb_registry(art_dir: Path) -> dict:
 
     version = _normalize_model_version(version_raw)
 
-    # Hard rule: in thesis mode, promote only semantic tags (xgb-...) or v1 fallback
-    # (prevents accidental timestamps creeping back in)
-    if version == "v1":
-        # allow v1 as explicit baseline, but only if you intentionally set it
-        # (still okay for early experiments)
-        pass
-    elif not version.startswith("xgb-"):
+    if version != "v1" and not version.startswith("xgb-"):
         raise ApiError(
             500,
             "model_registry_error",
@@ -115,16 +104,12 @@ def _sha256_dict(d: Dict[str, Any]) -> str:
 
 
 def _ensure_numpy_dense(X) -> np.ndarray:
-    if hasattr(X, "toarray"):  # sparse
+    if hasattr(X, "toarray"):
         X = X.toarray()
     return np.asarray(X, dtype="float32")
 
 
 def _load_ae_thresholds(art_dir: Path, settings: Settings) -> Tuple[float, float]:
-    """
-    Expects JSON like:
-    { "review": 0.6915, "block": 4.8955, ... }
-    """
     p = art_dir / settings.ae_thresholds_path
     if not p.exists():
         raise ApiError(500, "artifact_missing", f"Missing AE thresholds file: {p}")
@@ -137,9 +122,6 @@ def _load_ae_thresholds(art_dir: Path, settings: Settings) -> Tuple[float, float
 
 
 def _load_model_schema_from_processed_train(settings: Settings) -> List[str]:
-    """
-    Most reliable schema source = processed train.csv (because it matches what XGB saw).
-    """
     train_path = Path(settings.data_dir) / "train.csv"
     if not train_path.exists():
         raise ApiError(500, "artifact_missing", f"Missing processed train.csv for schema: {train_path}")
@@ -150,11 +132,7 @@ def _load_model_schema_from_processed_train(settings: Settings) -> List[str]:
 
     feats = [c for c in df.columns if c != "Class"]
     if len(feats) != 102:
-        raise ApiError(
-            500,
-            "artifact_invalid",
-            f"Expected 102 processed features, found {len(feats)} in {train_path}.",
-        )
+        raise ApiError(500, "artifact_invalid", f"Expected 102 processed features, found {len(feats)} in {train_path}.")
     return feats
 
 
@@ -181,7 +159,9 @@ def _compute_legit_error_baseline_from_val(settings: Settings, ae_model) -> np.n
     errs: List[float] = []
     for i in range(0, X_legit.shape[0], batch):
         xb = X_legit[i : i + batch]
-        xb_rec = ae_model.predict(xb, verbose=0)
+        # AE predict under lock to avoid TF thread-safety issues
+        with _AE_PREDICT_LOCK:
+            xb_rec = ae_model.predict(xb, verbose=0)
         eb = np.mean((xb - xb_rec) ** 2, axis=1)
         errs.extend([float(x) for x in eb])
 
@@ -201,11 +181,7 @@ def _load_or_build_ae_baseline(art_dir: Path, settings: Settings, ae_model) -> n
             base.sort()
             return base
         except Exception as e:
-            raise ApiError(
-                500,
-                "artifact_invalid",
-                f"Invalid AE baseline npy: {baseline_path} ({type(e).__name__}: {e})",
-            )
+            raise ApiError(500, "artifact_invalid", f"Invalid AE baseline npy: {baseline_path} ({type(e).__name__}: {e})")
 
     base = _compute_legit_error_baseline_from_val(settings, ae_model)
     try:
@@ -223,41 +199,47 @@ def ensure_loaded(settings: Settings) -> LoadedArtifacts:
     if _ART is not None:
         return _ART
 
-    art_dir = settings.artifacts_path()
+    # Prevent concurrent artifact loads under stress tests
+    with _ART_LOCK:
+        if _ART is not None:
+            return _ART
 
-    try:
-        reg = _load_active_xgb_registry(art_dir)
-        active_name = str(reg.get("active_model", "xgb_model.pkl")).strip()
-        model_version = _normalize_model_version(str(reg.get("version", "v1")).strip())
+        art_dir = settings.artifacts_path()
 
-        xgb_path = (art_dir / "models" / active_name).resolve()
-        if not xgb_path.exists():
-            raise ApiError(500, "artifact_missing", f"Active XGB model not found: {xgb_path}")
+        try:
+            reg = _load_active_xgb_registry(art_dir)
+            active_name = str(reg.get("active_model", "xgb_model.pkl")).strip()
+            model_version = _normalize_model_version(str(reg.get("version", "v1")).strip())
 
-        xgb = joblib.load(xgb_path)
-        ae = load_model(art_dir / settings.ae_model_path, compile=False)
+            xgb_path = (art_dir / "models" / active_name).resolve()
+            if not xgb_path.exists():
+                raise ApiError(500, "artifact_missing", f"Active XGB model not found: {xgb_path}")
 
-        model_features = _load_model_schema_from_processed_train(settings)
-        ae_review, ae_block = _load_ae_thresholds(art_dir, settings)
-        ae_legit_sorted_errors = _load_or_build_ae_baseline(art_dir, settings, ae)
+            xgb = joblib.load(xgb_path)
+            ae = load_model(art_dir / settings.ae_model_path, compile=False)
 
-    except ApiError:
-        raise
-    except FileNotFoundError as e:
-        raise ApiError(500, "artifact_missing", f"Missing artifact file: {e}")
-    except Exception as e:
-        raise ApiError(500, "artifact_load_failed", f"Failed loading artifacts: {type(e).__name__}: {e}")
+            model_features = _load_model_schema_from_processed_train(settings)
+            ae_review, ae_block = _load_ae_thresholds(art_dir, settings)
+            ae_legit_sorted_errors = _load_or_build_ae_baseline(art_dir, settings, ae)
 
-    _ART = LoadedArtifacts(
-        xgb=xgb,
-        ae=ae,
-        model_features=model_features,
-        ae_review=ae_review,
-        ae_block=ae_block,
-        ae_legit_sorted_errors=ae_legit_sorted_errors,
-        model_version=model_version,
-    )
-    return _ART
+        except ApiError:
+            raise
+        except FileNotFoundError as e:
+            raise ApiError(500, "artifact_missing", f"Missing artifact file: {e}")
+        except Exception as e:
+            raise ApiError(500, "artifact_load_failed", f"Failed loading artifacts: {type(e).__name__}: {e}")
+
+        _ART = LoadedArtifacts(
+            xgb=xgb,
+            ae=ae,
+            model_features=model_features,
+            ae_review=ae_review,
+            ae_block=ae_block,
+            ae_legit_sorted_errors=ae_legit_sorted_errors,
+            model_version=model_version,
+        )
+        return _ART
+
 
 
 # -------------------------
@@ -279,7 +261,9 @@ def score_xgb(art: LoadedArtifacts, X_df: pd.DataFrame) -> float:
 
 
 def ae_reconstruction_error(art: LoadedArtifacts, X_dense: np.ndarray) -> float:
-    X_rec = art.ae.predict(X_dense, verbose=0)
+    # NEW: guard TF predict
+    with _AE_PREDICT_LOCK:
+        X_rec = art.ae.predict(X_dense, verbose=0)
     return float(np.mean((X_dense - X_rec) ** 2, axis=1)[0])
 
 
@@ -299,9 +283,6 @@ def ae_bucket(art: LoadedArtifacts, ae_err: float) -> str:
     return "normal"
 
 
-# -------------------------
-# MAIN entry for Option A
-# -------------------------
 def predict_from_processed_102(
     settings: Settings,
     payload: Dict[str, Any],

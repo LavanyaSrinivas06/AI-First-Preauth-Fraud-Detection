@@ -4,8 +4,41 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+import uuid
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+# -------------------------
+# SQLite load-safety globals
+# -------------------------
+_DB_LOCK = threading.Lock()
+_WRITE_CON: Optional[sqlite3.Connection] = None
+_WRITE_PATH: Optional[str] = None
+_DB_INIT_DONE: set[str] = set()
+
+
+def _get_write_con(sqlite_path: Path) -> sqlite3.Connection:
+    """
+    Single long-lived SQLite connection for writes (per process).
+    Prevents 'too many open files' under Locust load.
+    """
+    global _WRITE_CON, _WRITE_PATH
+
+    sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    p = str(sqlite_path.resolve())
+
+    if _WRITE_CON is None or _WRITE_PATH != p:
+        con = sqlite3.connect(p, timeout=30, check_same_thread=False)
+        # Improve concurrency and reduce lock errors
+        con.execute("PRAGMA journal_mode=WAL;")
+        con.execute("PRAGMA synchronous=NORMAL;")
+        con.execute("PRAGMA busy_timeout=30000;")
+        _WRITE_CON = con
+        _WRITE_PATH = p
+
+    return _WRITE_CON
 
 
 # -------------------------
@@ -53,9 +86,18 @@ def _ensure_column(con: sqlite3.Connection, table: str, col: str, col_type: str)
 
 def init_db(sqlite_path: Path) -> None:
     sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    p = str(sqlite_path.resolve())
 
-    con = sqlite3.connect(str(sqlite_path))
-    try:
+    # Only initialize once per DB file (per process)
+    if p in _DB_INIT_DONE:
+        return
+
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
+        # re-check inside lock to avoid race
+        if p in _DB_INIT_DONE:
+            return
+
         cur = con.cursor()
 
         cur.execute(
@@ -130,8 +172,7 @@ def init_db(sqlite_path: Path) -> None:
         _ensure_column(con, "decisions", "model_version", "TEXT")
 
         con.commit()
-    finally:
-        con.close()
+        _DB_INIT_DONE.add(p)
 
 
 # -------------------------
@@ -285,13 +326,13 @@ def log_decision(
 ) -> str:
     init_db(sqlite_path)
     now = int(time.time())
-    dec_id = f"dec_{payload_hash[:16]}_{now}"
+    dec_id = f"dec_{uuid.uuid4().hex}_{now}"
 
     txn_id = _get_txn_id(payload, meta)
     ts = _get_timestamp(payload, meta)
 
-    con = sqlite3.connect(str(sqlite_path))
-    try:
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
         cur = con.cursor()
         cur.execute(
             """
@@ -316,15 +357,12 @@ def log_decision(
                 json.dumps(_payload_min(payload, meta)),
                 feature_path,
                 txn_id,
-                ts,             # ✅ timestamp goes here
-                model_version,  # ✅ model_version last
+                ts,
+                model_version,
             ),
-
         )
         con.commit()
-        return dec_id
-    finally:
-        con.close()
+    return dec_id
 
 
 def save_review_if_needed(
@@ -351,8 +389,8 @@ def save_review_if_needed(
     txn_id = _get_txn_id(payload, meta)
     ts = _get_timestamp(payload, meta)
 
-    con = sqlite3.connect(str(sqlite_path))
-    try:
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
         cur = con.cursor()
         cur.execute("SELECT id FROM reviews WHERE id = ?", (review_id,))
         if cur.fetchone():
@@ -368,7 +406,6 @@ def save_review_if_needed(
             )
             VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?, ?)
             """,
-            
             (
                 review_id,
                 now,
@@ -382,15 +419,13 @@ def save_review_if_needed(
                 json.dumps(reason_codes),
                 json.dumps(_payload_min(payload, meta)),
                 feature_path,
-                now,            # ✅ updated
-                model_version,  # ✅ model_version
+                now,
+                model_version,
             ),
-
         )
         con.commit()
-        return review_id
-    finally:
-        con.close()
+
+    return review_id
 
 
 # -------------------------
@@ -452,8 +487,8 @@ def update_review(
     init_db(sqlite_path)
     now = int(time.time())
 
-    con = sqlite3.connect(str(sqlite_path))
-    try:
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
         cur = con.cursor()
         cur.execute(
             """
@@ -469,15 +504,14 @@ def update_review(
         )
         con.commit()
         return cur.rowcount > 0
-    finally:
-        con.close()
 
 
 def assign_review_to_analyst(sqlite_path: Path, review_id: str, analyst: str) -> bool:
     init_db(sqlite_path)
     now = int(time.time())
-    con = sqlite3.connect(str(sqlite_path))
-    try:
+
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
         cur = con.cursor()
         cur.execute(
             """
@@ -489,10 +523,6 @@ def assign_review_to_analyst(sqlite_path: Path, review_id: str, analyst: str) ->
         )
         con.commit()
         return cur.rowcount > 0
-    finally:
-        con.close()
-
-
 
 
 # -------------------------
@@ -508,8 +538,8 @@ def insert_feedback_event(
     now = int(time.time())
     fb_id = f"fb_{now}_{review_id[-6:]}"
 
-    con = sqlite3.connect(str(sqlite_path))
-    try:
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
         cur = con.cursor()
         cur.execute(
             """
@@ -519,9 +549,7 @@ def insert_feedback_event(
             (fb_id, now, review_id, outcome, notes),
         )
         con.commit()
-        return fb_id
-    finally:
-        con.close()
+    return fb_id
 
 
 def list_feedback_events(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any]]:
