@@ -1,0 +1,119 @@
+{
+  "thresholds": {
+    "review": 2.8606350898742705,
+    "block": 21.662972305300073,
+    "max_fpr_review": 0.01,
+    "max_fpr_block": 0.001,
+    "note": "Decisions: approve < review < block based on reconstruction error."
+  },
+  "validation": {
+    "flagged_review_or_block": {
+      "precision": 0.020642201834862386,
+      "recall": 0.16071428571428573,
+      "f1": 0.036585365853658534,
+      "fpr": 0.010008203445447087,
+      "roc_auc": 0.9453797023321223,
+      "pr_auc": 0.02893819614950638,
+      "confusion_matrix": [
+        [
+          42238,
+          427
+        ],
+        [
+          47,
+          9
+        ]
+      ],
+      "tn_fp_fn_tp": [
+        42238,
+        427,
+        47,
+        9
+      ]
+    },
+    "blocked_only": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "fpr": 0.001007851869213641,
+      "roc_auc": 0.9453797023321223,
+      "pr_auc": 0.02893819614950638,
+      "confusion_matrix": [
+        [
+          42622,
+          43
+        ],
+        [
+          56,
+          0
+        ]
+      ],
+      "tn_fp_fn_tp": [
+        42622,
+        43,
+        56,
+        0
+      ]
+    }
+  },
+  "test": {
+    "flagged_review_or_block": {
+      "precision": 0.08097165991902834,
+      "recall": 0.38461538461538464,
+      "f1": 0.13377926421404682,
+      "fpr": 0.005319896883056011,
+      "roc_auc": 0.9271448144075283,
+      "pr_auc": 0.044535622758506796,
+      "confusion_matrix": [
+        [
+          42443,
+          227
+        ],
+        [
+          32,
+          20
+        ]
+      ],
+      "tn_fp_fn_tp": [
+        42443,
+        227,
+        32,
+        20
+      ]
+    },
+    "blocked_only": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "fpr": 0.0003046636981485821,
+      "roc_auc": 0.9271448144075283,
+      "pr_auc": 0.044535622758506796,
+      "confusion_matrix": [
+        [
+          42657,
+          13
+        ],
+        [
+          52,
+          0
+        ]
+      ],
+      "tn_fp_fn_tp": [
+        42657,
+        13,
+        52,
+        0
+      ]
+    }
+  },
+  "training": {
+    "epochs": 9,
+    "final_train_loss": 0.2876611351966858,
+    "final_val_loss": 0.30131596326828003
+  },
+  "paths": {
+    "train": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/train_nosmote.csv",
+    "val": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/val_nosmote.csv",
+    "test": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/data/processed/test_nosmote.csv"
+  }
+}

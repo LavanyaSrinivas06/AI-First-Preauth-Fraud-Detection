@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+POST,/preauth/decision,"CatchResponseError('{""error"":{""type"":""invalid_request_error"",""code"":""internal_error"",""message"":""OperationalError: unable to open database file""}}')",3256
+POST,/preauth/decision,"CatchResponseError('{""error"":{""type"":""invalid_request_error"",""code"":""internal_error"",""message"":""OSError: [Errno 24] Too many open files""}}')",9844

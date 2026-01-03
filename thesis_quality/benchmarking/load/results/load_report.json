@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-01-03T18:00:16",
+  "runs": [
+    {
+      "run_name": "run1",
+      "endpoint": "Aggregated",
+      "method": "UNKNOWN",
+      "requests": 25034,
+      "failures": 13100,
+      "failure_rate": 0.5232883278740912,
+      "rps": 210.16614633233934,
+      "avg_ms": 923.4078394115685,
+      "min_ms": 0.4002499999842257,
+      "max_ms": 5337.4277909997545,
+      "p50_ms": 1100.0,
+      "p90_ms": 1700.0,
+      "p95_ms": 2000.0,
+      "p99_ms": 2600.0,
+      "status": "degraded",
+      "notes": [
+        "Failure rate 52.33% > 1% threshold"
+      ]
+    },
+    {
+      "run_name": "run2",
+      "endpoint": "Aggregated",
+      "method": "UNKNOWN",
+      "requests": 23930,
+      "failures": 0,
+      "failure_rate": 0.0,
+      "rps": 200.8825869850716,
+      "avg_ms": 968.9424038725881,
+      "min_ms": 51.62266699971951,
+      "max_ms": 1323.069416999715,
+      "p50_ms": 980.0,
+      "p90_ms": 1000.0,
+      "p95_ms": 1100.0,
+      "p99_ms": 1100.0,
+      "status": "healthy",
+      "notes": []
+    },
+    {
+      "run_name": "run3",
+      "endpoint": "Aggregated",
+      "method": "UNKNOWN",
+      "requests": 108163,
+      "failures": 12385,
+      "failure_rate": 0.11450311104536672,
+      "rps": 905.6608335803911,
+      "avg_ms": 416.5371258810417,
+      "min_ms": 0.43295800060150214,
+      "max_ms": 7861.46374999953,
+      "p50_ms": 160.0,
+      "p90_ms": 1300.0,
+      "p95_ms": 1400.0,
+      "p99_ms": 1700.0,
+      "status": "degraded",
+      "notes": [
+        "Failure rate 11.45% > 1% threshold"
+      ]
+    }
+  ]
+}

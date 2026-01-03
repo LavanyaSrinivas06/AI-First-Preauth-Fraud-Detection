@@ -1,0 +1,51 @@
+{
+  "base_url": "http://127.0.0.1:8010",
+  "endpoint": "/preauth/decision",
+  "url": "http://127.0.0.1:8010/preauth/decision",
+  "n": 2000,
+  "concurrency": 10,
+  "total_seconds": 16.10172549984418,
+  "throughput_rps": 124.21029038281361,
+  "error_rate": 0.0014999999999999458,
+  "status_counts": {
+    "2xx": 1997,
+    "4xx": 0,
+    "5xx": 3,
+    "other": 0,
+    "exceptions": 0
+  },
+  "latency_ms_all": {
+    "min": 6.063415901735425,
+    "p50": 74.80133301578462,
+    "p90": 138.23743753600866,
+    "p99": 219.27823412464932,
+    "max": 443.39308398775756,
+    "mean": 80.32554600574076
+  },
+  "latency_ms_ok_only": {
+    "min": 6.063415901735425,
+    "p50": 74.78925003670156,
+    "p90": 138.25262505561113,
+    "p99": 219.29531035944817,
+    "max": 443.39308398775756,
+    "mean": 80.33102414601996
+  },
+  "error_samples": [
+    {
+      "status": 500,
+      "body": "{\"error\":{\"type\":\"invalid_request_error\",\"code\":\"internal_error\",\"message\":\"IntegrityError: UNIQUE constraint failed: decisions.id\"}}",
+      "latency_ms": 128.55329201556742
+    },
+    {
+      "status": 500,
+      "body": "{\"error\":{\"type\":\"invalid_request_error\",\"code\":\"internal_error\",\"message\":\"IntegrityError: UNIQUE constraint failed: decisions.id\"}}",
+      "latency_ms": 20.011625019833446
+    },
+    {
+      "status": 500,
+      "body": "{\"error\":{\"type\":\"invalid_request_error\",\"code\":\"internal_error\",\"message\":\"IntegrityError: UNIQUE constraint failed: decisions.id\"}}",
+      "latency_ms": 81.47187484428287
+    }
+  ],
+  "timestamp_utc": "2026-01-02T23:57:40Z"
+}
