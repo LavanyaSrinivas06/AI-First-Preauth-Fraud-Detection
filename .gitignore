@@ -47,3 +47,12 @@ data/raw/ecom_synthetic_fraud_dataset_v1.csv
 payloads/review/*.json
 artifacts/feature_snapshots/*.json
 
+
+# runtime stores / local artifacts
+artifacts/stores/*.sqlite
+artifacts/stores/*.db
+artifacts/stores/*.sqlite-journal
+artifacts/stores/*.sqlite-wal
+artifacts/stores/*.sqlite-shm
+
+
