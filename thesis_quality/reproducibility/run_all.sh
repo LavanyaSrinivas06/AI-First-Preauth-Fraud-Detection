@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# One-click reproducibility script for the thesis:
+# "AI-First Preauthorization Fraud Detection for Secure E-Commerce Checkout"
+#
+# This script reproduces:
+# - Model evaluation
+# - Drift detection
+# - Latency benchmarks
+# - Load testing
+#
+# Expected runtime: ~3–5 minutes (local machine)
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8010}"

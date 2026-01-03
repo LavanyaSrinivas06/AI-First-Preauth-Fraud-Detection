@@ -1,0 +1,8 @@
+THESIS-QUALITY REPRODUCIBILITY RUN
+timestamp: 2026-01-03_19-40-20
+base_url: http://127.0.0.1:8010
+endpoint: /preauth/decision
+elapsed_seconds: 1.47
+status: FAILED
+failed_cmd: /Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/.venv/bin/python thesis_quality/benchmarking/latency/run_latency.py --base-url http://127.0.0.1:8010 --endpoint /preauth/decision --n 2000 --concurrency 10 --no-store
+returncode: 1
