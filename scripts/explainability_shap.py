@@ -1,3 +1,4 @@
+#scripts/explainability_shap.py
 #!/usr/bin/env python3
 """
 FPN-10 | Explainability (SHAP – XGBoost only)
@@ -35,7 +36,7 @@ import shap
 # -----------------------------
 @dataclass(frozen=True)
 class SHAPConfig:
-    model_path: Path = Path("artifacts/xgb_model.pkl")
+    model_path: Path = Path("artifacts/models/xgb_model.pkl")
     test_csv_path: Path = Path("data/processed/test.csv")
     target_col: str = "Class"
 
@@ -119,7 +120,7 @@ def run_shap(
         feature_names=feature_names,
         plot_type="bar",
         show=False,
-        max_display=30,
+        max_display=15,
     )
     plt.savefig(bar_path, dpi=200, bbox_inches="tight")
     plt.close()

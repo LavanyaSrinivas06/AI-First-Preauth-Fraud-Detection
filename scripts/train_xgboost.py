@@ -107,7 +107,7 @@ print("\n🎯 Starting hyperparameter search...")
 param_grid = {
     "max_depth": [3, 4, 5,6],
     "learning_rate": [0.01, 0.03, 0.05],
-    "n_estimators": [150, 200, 250, 300],  # include baseline 300
+    "n_estimators": [150, 200, 250, 300],  
     "subsample": [0.8, 0.9, 1.0],
     "colsample_bytree": [0.7, 0.8, 1.0],
 }
