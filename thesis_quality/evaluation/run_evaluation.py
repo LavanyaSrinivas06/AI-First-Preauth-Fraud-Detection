@@ -34,6 +34,58 @@ def _copy_if_exists(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
         print(f"[COPY] {src} -> {dst}")
 
+def _plot_f1_vs_threshold(
+    model_path: Path,
+    val_csv: Path,
+    out_dir: Path,
+) -> None:
+    import numpy as np
+    import pandas as pd
+    import joblib
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import f1_score
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load model
+    model = joblib.load(model_path)
+
+    # Load validation data
+    val = pd.read_csv(val_csv)
+    X_val = val.drop(columns=["Class"])
+    y_val = val["Class"]
+
+    # Predict probabilities
+    y_proba = model.predict_proba(X_val)[:, 1]
+
+    # Sweep thresholds
+    thresholds = np.linspace(0.01, 0.99, 50)
+    f1_scores = []
+
+    for t in thresholds:
+        preds = (y_proba >= t).astype(int)
+        f1_scores.append(f1_score(y_val, preds))
+
+    best_idx = int(np.argmax(f1_scores))
+    best_t = thresholds[best_idx]
+    best_f1 = f1_scores[best_idx]
+
+    # Plot
+    plt.figure()
+    plt.plot(thresholds, f1_scores)
+    plt.axvline(best_t, linestyle="--", label=f"Best t={best_t:.2f}, F1={best_f1:.3f}")
+    plt.xlabel("Threshold")
+    plt.ylabel("F1 score")
+    plt.title("F1 vs Threshold (Validation)")
+    plt.legend()
+
+    out_path = out_dir / "xgb_f1_vs_threshold_val.png"
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+
+    print(f"[PLOT] Saved {out_path}")
+
+
 def main() -> None:
     import argparse
 
@@ -91,6 +143,15 @@ def main() -> None:
             _copy_if_exists(src, PLOTS_DIR / src.name)
         elif src.suffix.lower() in [".json"]:
             _copy_if_exists(src, METRICS_DIR / src.name)
+
+        # Generate F1 vs threshold plot for thesis (validation set)
+    val_csv = REPO_ROOT / "data" / "processed" / "val.csv"
+
+    _plot_f1_vs_threshold(
+        model_path=Path(args.xgb_model),
+        val_csv=val_csv,
+        out_dir=PLOTS_DIR,
+    )
 
     print("[OK] Thesis-quality evaluation outputs collected under:")
     print(f"- {METRICS_DIR}")

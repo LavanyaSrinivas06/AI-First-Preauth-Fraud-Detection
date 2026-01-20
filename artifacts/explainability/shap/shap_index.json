@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-01-17T17:16:58.921586+00:00",
+  "model": "artifacts/models/xgb_model.pkl",
+  "test_data": "data/processed/test.csv",
+  "outputs": {
+    "summary_plot": "artifacts/explainability/shap/shap_summary.png",
+    "bar_plot": "artifacts/explainability/shap/shap_bar.png",
+    "local_plots": [
+      "artifacts/explainability/shap/shap_local_0.png",
+      "artifacts/explainability/shap/shap_local_1.png"
+    ]
+  }
+}
