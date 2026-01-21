@@ -1,0 +1,96 @@
+{
+    "threshold": 0.307,
+    "validation": {
+        "precision": 0.9245283018867925,
+        "recall": 0.875,
+        "f1": 0.8990825688073395,
+        "roc_auc": 0.9983233162009677,
+        "confusion_matrix": [
+            [
+                42661,
+                4
+            ],
+            [
+                7,
+                49
+            ]
+        ],
+        "classification_report": {
+            "0": {
+                "precision": 0.9998359426267929,
+                "recall": 0.9999062463377476,
+                "f1-score": 0.999871093246458,
+                "support": 42665.0
+            },
+            "1": {
+                "precision": 0.9245283018867925,
+                "recall": 0.875,
+                "f1-score": 0.8990825688073395,
+                "support": 56.0
+            },
+            "accuracy": 0.9997425153905574,
+            "macro avg": {
+                "precision": 0.9621821222567927,
+                "recall": 0.9374531231688739,
+                "f1-score": 0.9494768310268987,
+                "support": 42721.0
+            },
+            "weighted avg": {
+                "precision": 0.9997372270564309,
+                "recall": 0.9997425153905574,
+                "f1-score": 0.9997389765504867,
+                "support": 42721.0
+            }
+        }
+    },
+    "test": {
+        "precision": 0.875,
+        "recall": 0.8076923076923077,
+        "f1": 0.84,
+        "roc_auc": 0.9911120224982424,
+        "confusion_matrix": [
+            [
+                42664,
+                6
+            ],
+            [
+                10,
+                42
+            ]
+        ],
+        "classification_report": {
+            "0": {
+                "precision": 0.9997656652762806,
+                "recall": 0.9998593859854699,
+                "f1-score": 0.9998125234345707,
+                "support": 42670.0
+            },
+            "1": {
+                "precision": 0.875,
+                "recall": 0.8076923076923077,
+                "f1-score": 0.84,
+                "support": 52.0
+            },
+            "accuracy": 0.9996254856982351,
+            "macro avg": {
+                "precision": 0.9373828326381404,
+                "recall": 0.9037758468388888,
+                "f1-score": 0.9199062617172853,
+                "support": 42722.0
+            },
+            "weighted avg": {
+                "precision": 0.9996138040667314,
+                "recall": 0.9996254856982351,
+                "f1-score": 0.9996180041887817,
+                "support": 42722.0
+            }
+        }
+    },
+    "best_params": {
+        "subsample": 0.8,
+        "n_estimators": 250,
+        "max_depth": 6,
+        "learning_rate": 0.05,
+        "colsample_bytree": 1.0
+    }
+}

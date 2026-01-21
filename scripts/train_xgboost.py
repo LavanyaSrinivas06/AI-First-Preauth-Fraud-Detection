@@ -73,6 +73,31 @@ test_df, X_test, y_test = load_dataset(TEST_PATH)
 print("✔ Data loaded.")
 print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 
+# ---------------------------
+# Save feature schema (ORDER MATTERS)
+# ---------------------------
+FEATURES_PATH = ARTIFACT_DIR / "features.json"
+
+# Case A: X_train is a DataFrame (best)
+if hasattr(X_train, "columns"):
+    feature_names = list(X_train.columns)
+
+# Case B: X_train is a NumPy array (no names). Use CSV columns as source of truth.
+else:
+    # train_df likely contains the full row including label; adjust label column name if different
+    label_candidates = ["Class", "label", "is_fraud", "fraud"]
+    label_col = next((c for c in label_candidates if c in train_df.columns), None)
+    if label_col is None:
+        raise RuntimeError("Could not find label column in train_df to derive feature schema.")
+
+    feature_names = [c for c in train_df.columns if c != label_col]
+
+with open(FEATURES_PATH, "w") as f:
+    json.dump(feature_names, f, indent=2)
+
+print(f"✔ Saved: {FEATURES_PATH} ({len(feature_names)} features)")
+
+
 
 # ---------------------------
 # Baseline Model
@@ -192,12 +217,68 @@ print("\n📊 Computing final metrics...")
 metrics_val = evaluate(best_xgb, X_val, y_val, best_t)
 metrics_test = evaluate(best_xgb, X_test, y_test, best_t)
 
+
+# ---------------------------
+# Weights & Biases logging
+# ---------------------------
+import wandb
+
+wandb.init(
+    project="ai-first-preauth-fraud",
+    name="xgboost-preauth-training",
+    config={
+        **best_params,
+        "used_smote": USED_SMOTE,
+        "scale_pos_weight": scale_pos_weight,
+        "model_type": "XGBoost",
+    }
+)
+
+wandb.log({
+    # Validation metrics
+    "val/roc_auc": metrics_val["roc_auc"],
+    "val/precision": metrics_val["precision"],
+    "val/recall": metrics_val["recall"],
+    "val/f1": metrics_val["f1"],
+
+    # Test metrics
+    "test/roc_auc": metrics_test["roc_auc"],
+    "test/precision": metrics_test["precision"],
+    "test/recall": metrics_test["recall"],
+    "test/f1": metrics_test["f1"],
+
+    # Threshold
+    "decision/best_threshold": best_t,
+})
+
+# Probability distribution
+wandb.log({
+    "val/xgb_probability_distribution": wandb.Histogram(val_probs),
+})
+
+# Decision flow simulation (aligns with your preauth logic)
+approve_rate = (val_probs < best_t).mean()
+review_rate = ((val_probs >= best_t) & (val_probs < 0.80)).mean()
+block_rate = (val_probs >= 0.80).mean()
+
+wandb.log({
+    "decision_flow/approve_rate": approve_rate,
+    "decision_flow/review_rate": review_rate,
+    "decision_flow/block_rate": block_rate,
+})
+
+wandb.finish()
+
+
 # ---------------------------
 # Save Model + Metrics
 # ---------------------------
 print("\n💾 Saving model and metrics...")
 
-joblib.dump(best_xgb, ARTIFACT_DIR / "xgb_model.pkl")
+MODEL_DIR = ARTIFACT_DIR / "models"
+MODEL_DIR.mkdir(exist_ok=True)
+
+joblib.dump(best_xgb, MODEL_DIR / "xgb_model.pkl")
 
 with open(ARTIFACT_DIR / "xgb_metrics.json", "w") as f:
     json.dump(

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.core.config import get_settings
 from api.core.logging import setup_logging
@@ -21,6 +22,23 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AI-First Preauth Fraud Detection API",
         version="1.0.0",
+    )
+
+    # Allow cross-origin requests from local dashboard/dev hosts. In dev it's
+    # convenient to allow the Streamlit dashboard (localhost:8501) and the
+    # local API swagger UI. For production pin this to the real dashboard URL.
+    allowed_origins = [
+        "http://127.0.0.1:8501",
+        "http://localhost:8501",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     register_exception_handlers(app)

@@ -1,0 +1,9 @@
+[theme]
+base = "light"
+
+primaryColor = "#1F6AE1"              # Blue (buttons, highlights)
+backgroundColor = "#FFFFFF"           # White background
+secondaryBackgroundColor = "#F4F7FB"  # Light blue-gray cards
+textColor = "#0F172A"                 # Dark text (readable)
+
+font = "sans serif"

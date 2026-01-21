@@ -4,12 +4,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import logging
+
+from api.core.logging import json_log
 
 from fastapi import APIRouter, Depends
 
 from api.core.config import Settings, get_settings
 from api.services.model_service import predict_from_processed_102, ensure_loaded
 from api.services.store import save_review_if_needed, log_decision
+from api.services.reason_builder import build_reason_details_v2
+
 
 router = APIRouter(tags=["preauth"])
 
@@ -40,70 +45,6 @@ def _fmt(x: Optional[float]) -> str:
         return f"{float(x):.6f}"
     except Exception:
         return str(x)
-
-
-def _build_reason_details(
-    codes: List[str],
-    *,
-    p_xgb: float,
-    t_low: float,
-    t_high: float,
-    ae_err: Optional[float],
-    ae_pct: Optional[float],
-    ae_bkt: str,
-    ae_review: Optional[float],
-    ae_block: Optional[float],
-) -> List[Dict[str, str]]:
-    details: List[Dict[str, str]] = []
-
-    for c in codes:
-        if c == "xgb_low_risk":
-            details.append(
-                {
-                    "code": c,
-                    "message": f"XGBoost low risk: p_xgb={_fmt(p_xgb)} < t_low={_fmt(t_low)}.",
-                }
-            )
-        elif c == "xgb_gray_zone":
-            details.append(
-                {
-                    "code": c,
-                    "message": f"XGBoost uncertainty: p_xgb={_fmt(p_xgb)} between t_low={_fmt(t_low)} and t_high={_fmt(t_high)}.",
-                }
-            )
-        elif c == "xgb_high_risk":
-            details.append(
-                {
-                    "code": c,
-                    "message": f"XGBoost high risk: p_xgb={_fmt(p_xgb)} >= t_high={_fmt(t_high)}.",
-                }
-            )
-        elif c == "ae_review_gate":
-            details.append(
-                {
-                    "code": c,
-                    "message": (
-                        f"AE elevated anomaly (review gate): "
-                        f"ae_error={_fmt(ae_err)}, ae_review={_fmt(ae_review)}, ae_block={_fmt(ae_block)}, "
-                        f"percentile_vs_legit={_fmt(ae_pct)}, bucket={ae_bkt}."
-                    ),
-                }
-            )
-        elif c == "ae_block_gate":
-            details.append(
-                {
-                    "code": c,
-                    "message": (
-                        f"AE extreme anomaly (block gate): "
-                        f"ae_error={_fmt(ae_err)} >= ae_block={_fmt(ae_block)}, "
-                        f"percentile_vs_legit={_fmt(ae_pct)}, bucket={ae_bkt}."
-                    ),
-                }
-            )
-        else:
-            details.append({"code": c, "message": c})
-
-    return details
 
 
 @router.post("/preauth/decision")
@@ -169,7 +110,8 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
         ae_percentile=ae_pct,
         ae_bucket=ae_bkt,
         feature_path=feature_path,
-        model_version=model_version,   # NEW
+        model_version=model_version,   
+        processed_features_json=json.dumps(features)
     )
 
     log_decision(
@@ -187,6 +129,25 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
         model_version=model_version,   # NEW
     )
 
+    # Structured JSON audit log (supplementary to DB record) for tracing and offline analysis
+    try:
+        logger = logging.getLogger("fpn_api")
+        audit = {
+            "decision": decision,
+            "review_id": review_id,
+            "payload_hash": payload_hash,
+            "p_xgb": float(p_xgb) if p_xgb is not None else None,
+            "ae_error": float(ae_err) if ae_err is not None else None,
+            "ae_bucket": ae_bkt,
+            "reason_codes": reason_codes,
+            "model_version": model_version,
+            # include any client-provided request id if present in meta
+            "request_id": meta.get("request_id") if isinstance(meta, dict) else None,
+        }
+        json_log(logger, audit)
+    except Exception:
+        # Logging should not break request handling
+        pass
 
     resp: Dict[str, Any] = {
         "decision": decision,
@@ -200,17 +161,15 @@ def preauth_decision(body: Dict[str, Any], settings: Settings = Depends(get_sett
     }
 
     if decision != "APPROVE":
-        resp["reason_codes"] = reason_codes
-        resp["reason_details"] = _build_reason_details(
-            reason_codes,
+        resp["reason_details"] = build_reason_details_v2(
+            decision=decision,
             p_xgb=p_xgb,
             t_low=settings.xgb_t_low,
             t_high=settings.xgb_t_high,
-            ae_err=ae_err,
-            ae_pct=ae_pct,
-            ae_bkt=ae_bkt,
-            ae_review=ae_review_th,
-            ae_block=ae_block_th,
+            features=features,
+            ae_percentile=ae_pct,
+            ae_bucket=ae_bkt,
         )
+
 
     return resp
