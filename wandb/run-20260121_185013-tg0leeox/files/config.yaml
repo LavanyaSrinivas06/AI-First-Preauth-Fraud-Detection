@@ -1,0 +1,37 @@
+_wandb:
+    value:
+        cli_version: 0.24.0
+        e:
+            qxo9s6s228w4ypu1y845mboau2a9p9fd:
+                codePath: w&b.py
+                codePathLocal: w&b.py
+                email: Lavanyasrinivas65@gmail.com
+                executable: /Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/.venv/bin/python
+                git:
+                    commit: efe204c7ac80f4217839e1c373c3a5b4831e2b31
+                    remote: https://github.com/LavanyaSrinivas06/AI-First-Preauth-Fraud-Detection.git
+                host: MacBookPro
+                os: macOS-26.2-arm64-arm-64bit
+                program: /Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/w&b.py
+                python: CPython 3.10.19
+                root: /Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection
+                startedAt: "2026-01-21T17:50:13.034803Z"
+                writerId: qxo9s6s228w4ypu1y845mboau2a9p9fd
+        m: []
+        python_version: 3.10.19
+        t:
+            "3":
+                - 2
+                - 16
+            "4": 3.10.19
+            "5": 0.24.0
+            "12": 0.24.0
+            "13": darwin-arm64
+architecture:
+    value: CNN
+dataset:
+    value: CIFAR-100
+epochs:
+    value: 10
+learning_rate:
+    value: 0.02

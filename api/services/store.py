@@ -122,7 +122,8 @@ def init_db(sqlite_path: Path) -> None:
               analyst TEXT,
               notes TEXT,
               updated INTEGER,
-              model_version TEXT
+              model_version TEXT,
+              processed_features_json TEXT
             )
             """
         )
@@ -165,6 +166,8 @@ def init_db(sqlite_path: Path) -> None:
         _ensure_column(con, "reviews", "timestamp", "TEXT")
         _ensure_column(con, "reviews", "feature_path", "TEXT")
         _ensure_column(con, "reviews", "model_version", "TEXT")
+        _ensure_column(con, "reviews", "processed_features_json", "TEXT")
+        _ensure_column(con, "reviews", "shap_path", "TEXT")
 
         _ensure_column(con, "decisions", "txn_id", "TEXT")
         _ensure_column(con, "decisions", "timestamp", "TEXT")
@@ -378,6 +381,7 @@ def save_review_if_needed(
     ae_bucket: Optional[str] = None,
     feature_path: Optional[str] = None,
     model_version: Optional[str] = None,
+    processed_features_json: Optional[str] = None,
 ) -> Optional[str]:
     if decision != "REVIEW":
         return None
@@ -402,9 +406,9 @@ def save_review_if_needed(
               id, created, txn_id, timestamp, decision,
               score_xgb, ae_error, ae_percentile_vs_legit, ae_bucket,
               payload_hash, reason_codes, payload_min, feature_path,
-              status, analyst_decision, analyst, notes, updated, model_version
+              status, analyst_decision, analyst, notes, updated, model_version, processed_features_json
             )
-            VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?, ?)
+            VALUES (?, ?, ?, ?, 'REVIEW', ?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, NULL, ?, ?, ?)
             """,
             (
                 review_id,
@@ -421,6 +425,7 @@ def save_review_if_needed(
                 feature_path,
                 now,
                 model_version,
+                processed_features_json,
             ),
         )
         con.commit()
@@ -431,28 +436,63 @@ def save_review_if_needed(
 # -------------------------
 # Review reads/writes
 # -------------------------
-def load_review_queue(sqlite_path: Path, limit: int = 200) -> List[Dict[str, Any]]:
+def load_review_queue(sqlite_path: Path, limit: int = 200, status: str = "open") -> List[Dict[str, Any]]:
+    """Load reviews for the dashboard queue.
+
+    status: 'open' (default), 'closed', or 'all'
+    """
     init_db(sqlite_path)
     con = sqlite3.connect(str(sqlite_path))
     con.row_factory = sqlite3.Row
     try:
         cur = con.cursor()
-        cur.execute(
-            """
-            SELECT *
-            FROM reviews
-            WHERE status = 'open'
-            ORDER BY created DESC
-            LIMIT ?
-            """,
-            (int(limit),),
-        )
+        if status == "open":
+            cur.execute(
+                """
+                SELECT *
+                FROM reviews
+                WHERE status = 'open'
+                ORDER BY created DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            )
+        elif status == "closed":
+            cur.execute(
+                """
+                SELECT *
+                FROM reviews
+                WHERE status = 'closed'
+                ORDER BY updated DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            )
+        else:
+            # all
+            cur.execute(
+                """
+                SELECT *
+                FROM reviews
+                ORDER BY created DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            )
+
         rows = cur.fetchall()
         out: List[Dict[str, Any]] = []
         for r in rows:
             d = dict(r)
             d["reason_codes"] = json.loads(d.get("reason_codes") or "[]")
             d["payload_min"] = json.loads(d.get("payload_min") or "{}")
+            # normalize fields for UI
+            if d.get("score_xgb") is None:
+                d["score_xgb"] = 0.5
+            if d.get("ae_bucket") is None:
+                d["ae_bucket"] = "unknown"
+            if d.get("ae_percentile_vs_legit") is None:
+                d["ae_percentile_vs_legit"] = 0.0
             out.append(d)
         return out
     finally:
@@ -472,6 +512,13 @@ def get_review_by_id(sqlite_path: Path, review_id: str) -> Optional[Dict[str, An
         d = dict(row)
         d["reason_codes"] = json.loads(d.get("reason_codes") or "[]")
         d["payload_min"] = json.loads(d.get("payload_min") or "{}")
+        # normalize fields for UI
+        if d.get("score_xgb") is None:
+            d["score_xgb"] = 0.5
+        if d.get("ae_bucket") is None:
+            d["ae_bucket"] = "unknown"
+        if d.get("ae_percentile_vs_legit") is None:
+            d["ae_percentile_vs_legit"] = 0.0
         return d
     finally:
         con.close()
@@ -501,6 +548,59 @@ def update_review(
             WHERE id=?
             """,
             (analyst_decision, analyst, notes, now, review_id),
+        )
+        con.commit()
+        return cur.rowcount > 0
+
+
+def set_review_shap_path(sqlite_path: Path, review_id: str, shap_path: str) -> bool:
+    """Store a shap_path string for a review without changing its status.
+
+    Returns True if the row was updated.
+    """
+    init_db(sqlite_path)
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
+        cur = con.cursor()
+        cur.execute(
+            """
+            UPDATE reviews
+            SET shap_path = ?, updated = ?
+            WHERE id = ?
+            """,
+            (shap_path, int(time.time()), review_id),
+        )
+        con.commit()
+        return cur.rowcount > 0
+
+
+def set_review_scores(
+    sqlite_path: Path,
+    review_id: str,
+    score_xgb: Optional[float],
+    ae_error: Optional[float],
+    ae_percentile: Optional[float],
+    ae_bucket: Optional[str],
+) -> bool:
+    """Update scoring fields for a review. Returns True if row updated."""
+    init_db(sqlite_path)
+    con = _get_write_con(sqlite_path)
+    with _DB_LOCK:
+        cur = con.cursor()
+        cur.execute(
+            """
+            UPDATE reviews
+            SET score_xgb = ?, ae_error = ?, ae_percentile_vs_legit = ?, ae_bucket = ?, updated = ?
+            WHERE id = ?
+            """,
+            (
+                float(score_xgb) if score_xgb is not None else None,
+                float(ae_error) if ae_error is not None else None,
+                float(ae_percentile) if ae_percentile is not None else None,
+                ae_bucket,
+                int(time.time()),
+                review_id,
+            ),
         )
         con.commit()
         return cur.rowcount > 0

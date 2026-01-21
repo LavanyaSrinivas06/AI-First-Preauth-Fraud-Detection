@@ -1,0 +1,17 @@
+{
+  "os": "macOS-26.2-arm64-arm-64bit",
+  "python": "CPython 3.10.19",
+  "startedAt": "2026-01-21T17:50:13.034803Z",
+  "program": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/w&b.py",
+  "codePath": "w&b.py",
+  "codePathLocal": "w&b.py",
+  "git": {
+    "remote": "https://github.com/LavanyaSrinivas06/AI-First-Preauth-Fraud-Detection.git",
+    "commit": "efe204c7ac80f4217839e1c373c3a5b4831e2b31"
+  },
+  "email": "Lavanyasrinivas65@gmail.com",
+  "root": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection",
+  "host": "MacBookPro",
+  "executable": "/Users/lavanyasrinivas/Documents/AI-First-Preauth-Fraud-Detection/AI-First-Preauth-Fraud-Detection/.venv/bin/python",
+  "writerId": "qxo9s6s228w4ypu1y845mboau2a9p9fd"
+}
