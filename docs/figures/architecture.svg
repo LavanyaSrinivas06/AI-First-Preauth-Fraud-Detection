@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="900" height="520" viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <style>
+    .box { fill:#f7f9fc; stroke:#2b6cb0; stroke-width:2px; rx:8; }
+    .box-strong { fill:#e6f0ff; stroke:#1e40af; stroke-width:2px; rx:8; }
+    .text { font-family: Arial, Helvetica, sans-serif; font-size:13px; fill:#0f172a; }
+    .title { font-family: Arial, Helvetica, sans-serif; font-size:14px; font-weight:700; fill:#07153a; }
+    .arrow { stroke:#334155; stroke-width:2; fill:none; marker-end: url(#arrowhead); }
+    .small { font-size:11px; fill:#334155; }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#334155" />
+    </marker>
+  </defs>
+
+  <!-- Inbound -->
+  <rect x="40" y="30" width="160" height="56" class="box-strong" />
+  <text x="120" y="60" text-anchor="middle" class="title">Inbound Request</text>
+  <text x="120" y="76" text-anchor="middle" class="small">(raw transaction JSON)</text>
+
+  <!-- API -->
+  <rect x="240" y="30" width="160" height="56" class="box" />
+  <text x="320" y="54" text-anchor="middle" class="title">API (FastAPI)</text>
+  <text x="320" y="70" text-anchor="middle" class="small">scoring endpoint</text>
+
+  <!-- Model Service -->
+  <rect x="440" y="30" width="360" height="106" class="box-strong" />
+  <text x="620" y="48" text-anchor="middle" class="title">Model Service</text>
+  <text x="620" y="66" text-anchor="middle" class="small">preprocess → feature snapshot → score</text>
+
+  <!-- arrows top flow -->
+  <path d="M200 58 L240 58" class="arrow" />
+  <path d="M400 58 L440 58" class="arrow" />
+
+  <!-- inside model service: two model boxes -->
+  <rect x="480" y="110" width="160" height="60" class="box" />
+  <text x="560" y="140" text-anchor="middle" class="small">XGBoost (p_xgb)</text>
+
+  <rect x="660" y="110" width="160" height="60" class="box" />
+  <text x="740" y="140" text-anchor="middle" class="small">Autoencoder (ae_error)</text>
+
+  <!-- router -->
+  <rect x="560" y="200" width="200" height="64" class="box-strong" />
+  <text x="660" y="222" text-anchor="middle" class="title">Hybrid Router</text>
+  <text x="660" y="240" text-anchor="middle" class="small">apply thresholds → APPROVE/REVIEW/BLOCK</text>
+
+  <!-- arrows from models to router -->
+  <path d="M640 140 L640 200" class="arrow" />
+  <path d="M740 140 L740 200" class="arrow" />
+
+  <!-- decisions -->
+  <rect x="220" y="300" width="160" height="56" class="box" />
+  <text x="300" y="332" text-anchor="middle" class="title">APPROVE</text>
+
+  <rect x="420" y="300" width="160" height="56" class="box" />
+  <text x="500" y="332" text-anchor="middle" class="title">REVIEW</text>
+
+  <rect x="620" y="300" width="160" height="56" class="box" />
+  <text x="700" y="332" text-anchor="middle" class="title">BLOCK</text>
+
+  <!-- arrows from router to decisions -->
+  <path d="M660 232 L300 300" class="arrow" />
+  <path d="M660 232 L500 300" class="arrow" />
+  <path d="M660 232 L740 300" class="arrow" />
+
+  <!-- review flow to dashboard and store -->
+  <rect x="500" y="380" width="260" height="72" class="box-strong" />
+  <text x="630" y="405" text-anchor="middle" class="title">Analyst Review / Store</text>
+  <text x="630" y="423" text-anchor="middle" class="small">Streamlit UI + SQLite + artifact pointers</text>
+
+  <path d="M500 336 L560 380" class="arrow" />
+
+  <!-- artifacts storage -->
+  <rect x="40" y="380" width="420" height="72" class="box" />
+  <text x="250" y="402" text-anchor="middle" class="title">Artifacts</text>
+  <text x="250" y="420" text-anchor="middle" class="small">artifacts/models, artifacts/plots, artifacts/explainability</text>
+
+  <path d="M420 336 L420 380" class="arrow" />
+
+  <!-- legend -->
+  <text x="40" y="480" class="small">Diagram: data flows left→right/top→down. Feature snapshots and SHAP PNGs are written into `artifacts/` per review for auditability.</text>
+
+</svg>
