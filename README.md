@@ -45,7 +45,8 @@ The system is served as a **FastAPI REST API** and visualized through a **Stream
 
 ## Architecture
 
-![System Architecture](docs/figures/system_architecture.png)
+<img width="4102" height="2190" alt="image" src="https://github.com/user-attachments/assets/713fdfd9-5da2-4d9a-abcb-8d007e0f4c19" />
+
 
 ### Decision Flow
 
